@@ -29,6 +29,7 @@ Thumbs.db
 
 # Claude Code local settings
 .claude/settings.local.json
+.mcp.json
 
 # uv
 uv.lock

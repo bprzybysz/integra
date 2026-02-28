@@ -103,6 +103,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         future.set_result(query.data == "approve")
 
 
+async def ask_confirmation_handler(**kwargs: object) -> str:
+    """Tool handler wrapper for ask_confirmation."""
+    question = str(kwargs.get("question", ""))
+    return await ask_confirmation(question)
+
+
+async def notify_handler(**kwargs: object) -> str:
+    """Tool handler wrapper for notify."""
+    message = str(kwargs.get("message", ""))
+    return await notify(message)
+
+
 def register_handlers(app: Application[Any, Any, Any, Any, Any, Any]) -> None:
     """Register Telegram callback-query handlers on the given Application."""
     app.add_handler(CallbackQueryHandler(handle_callback))

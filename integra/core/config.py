@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     data_lake_path: Path = Path("data/lake")
     data_audit_path: Path = Path("data/audit")
 
+    # Scheduler
+    schedule_morning: str = "08:00"
+    schedule_evening: str = "21:00"
+    schedule_enabled: bool = True
+
     # Locale
     timezone: str = "Europe/Warsaw"
     locale: str = "pl-PL"

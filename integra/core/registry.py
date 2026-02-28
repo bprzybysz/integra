@@ -69,6 +69,146 @@ TOOL_REGISTRY: dict[str, ToolDef] = {
             },
         },
     },
+    "collect_supplement_stack": {
+        "handler": _placeholder_handler,
+        "requires_confirmation": False,
+        "schema": {
+            "name": "collect_supplement_stack",
+            "description": ("Add a supplement or medication to the user's stack. Stores encrypted in data lake."),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Supplement/medication name."},
+                    "dose": {"type": "string", "description": "Dose amount (e.g. '5000')."},
+                    "unit": {"type": "string", "description": "Unit (e.g. 'mg', 'IU')."},
+                    "frequency": {
+                        "type": "string",
+                        "description": "Dosing frequency: daily, twice_daily, weekly, as_needed.",
+                        "enum": ["daily", "twice_daily", "weekly", "as_needed"],
+                    },
+                    "time_of_day": {"type": "string", "description": "When taken (e.g. 'morning')."},
+                    "category": {
+                        "type": "string",
+                        "description": "Category: supplement, medication, or addiction-therapy.",
+                        "enum": ["supplement", "medication", "addiction-therapy"],
+                    },
+                    "notes": {"type": "string", "description": "Optional notes."},
+                },
+                "required": ["name", "dose", "unit"],
+            },
+        },
+    },
+    "log_drug_intake": {
+        "handler": _placeholder_handler,
+        "requires_confirmation": False,
+        "schema": {
+            "name": "log_drug_intake",
+            "description": (
+                "Log a single drug or substance intake event with timestamp. "
+                "Supports addiction-therapy tracking with daily quotas."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "substance": {"type": "string", "description": "Substance name."},
+                    "amount": {"type": "string", "description": "Amount taken."},
+                    "unit": {"type": "string", "description": "Unit (e.g. 'mg')."},
+                    "category": {
+                        "type": "string",
+                        "description": "Category: supplement, medication, or addiction-therapy.",
+                        "enum": ["supplement", "medication", "addiction-therapy"],
+                    },
+                    "daily_quota": {
+                        "type": "string",
+                        "description": "Target max per day (for addiction-therapy).",
+                    },
+                    "notes": {"type": "string", "description": "Optional notes."},
+                },
+                "required": ["substance", "amount", "unit"],
+            },
+        },
+    },
+    "log_meal": {
+        "handler": _placeholder_handler,
+        "requires_confirmation": False,
+        "schema": {
+            "name": "log_meal",
+            "description": "Log a dietary intake entry (meal or snack).",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "meal_type": {
+                        "type": "string",
+                        "description": "Type of meal.",
+                        "enum": ["breakfast", "lunch", "dinner", "snack"],
+                    },
+                    "items": {"type": "string", "description": "Food items consumed."},
+                    "notes": {"type": "string", "description": "Optional notes (portions, etc)."},
+                },
+                "required": ["meal_type", "items"],
+            },
+        },
+    },
+    "query_health_data": {
+        "handler": _placeholder_handler,
+        "requires_confirmation": False,
+        "schema": {
+            "name": "query_health_data",
+            "description": (
+                "Query health data from the encrypted data lake. Supports supplements, intake, and dietary categories."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "description": "Data category to query.",
+                        "enum": ["supplements", "intake", "dietary"],
+                    },
+                    "filters": {
+                        "type": "object",
+                        "description": "Optional key-value filters to match records.",
+                    },
+                },
+                "required": ["category"],
+            },
+        },
+    },
+    "ingest_cc_history": {
+        "handler": _placeholder_handler,
+        "requires_confirmation": True,
+        "schema": {
+            "name": "ingest_cc_history",
+            "description": (
+                "Ingest Claude Code session history from a zip archive into "
+                "the encrypted data lake. Requires user confirmation."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "archive_path": {
+                        "type": "string",
+                        "description": "Path to the zip archive containing CC session data.",
+                    },
+                },
+                "required": ["archive_path"],
+            },
+        },
+    },
+    "analyze_cc_productivity": {
+        "handler": _placeholder_handler,
+        "requires_confirmation": False,
+        "schema": {
+            "name": "analyze_cc_productivity",
+            "description": (
+                "Cross-reference Claude Code session data with drug intake records to analyze productivity patterns."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+    },
 }
 
 
