@@ -14,7 +14,7 @@ Items from INSTRUCTION.md — merged, deferred, or inlined to eliminate overlap 
 | "openclawd setup" + "integra init" | **MERGE** → Stage 0 | Same deliverable |
 | "decide data grouping" + "secure intake" | **MERGE** → Stage 1 data lake | Same concern |
 | "industry patterns" + "coleman00 patterns" | **MERGE** → architecture principle | Not a stage; applied everywhere |
-| "insights from claude code history" | **DEFER** → post-Stage 2 | Revisit after data lake + deps operational. Requires drug interrogation data first. |
+| "insights from claude code history" | **INLINE** → Stage 2C | CC history archive + scripts + charts exist at known paths. Cross-reference with drug/supplement schedule from 2B. Module `cc_history.py` already built. |
 | "train/improve human context" | **DEFER** → post-MVP | Depends on data pipeline maturity |
 | matplotlib/sns plots | **DEFER** → when data exists | No data to visualize yet |
 | "schedule drug/supplement interrogation" | **INLINE** → Stage 2B data collection | One task within user data collection |
@@ -35,8 +35,7 @@ graph LR
     subgraph "Stage 0 — Init"
         A[integra repo] --> B[.claude/ setup]
         A --> C[GH Project board]
-        D[prp-core plugin]
-        E[ralph-loop plugin]
+        D[prp-core plugin<br/>includes ralph loop]
     end
 
     subgraph "Stage 1 — Foundation"
@@ -44,13 +43,13 @@ graph LR
         G --> H[Telegram HIL]
         G --> I[Data MCP Gateway]
         I --> J[Encrypted<br/>Local Lake]
-        G --> T[query_stack<br/>GH Issues API]
     end
 
     subgraph "Stage 2 — Toptal Screening"
         K[RAPID drills] --> L[Stage 2 Codility]
         L --> M[Stage 3 Live Screen]
         M --> N[Stage 4 Project]
+        T[query_stack<br/>GH Issues API]
     end
 
     subgraph "Stage 3 — Health + Habits"
@@ -58,7 +57,7 @@ graph LR
         P[Comms channels] --> Q
     end
 
-    C --> F
+    A --> F
     C --> K
     C --> T
     N --> O
@@ -67,7 +66,6 @@ graph LR
     style B fill:#8C4FFF,color:#fff,stroke:#703FCC,stroke-width:1px
     style C fill:#8C4FFF,color:#fff,stroke:#703FCC,stroke-width:1px
     style D fill:#01A88D,color:#fff,stroke:#008670,stroke-width:1px
-    style E fill:#01A88D,color:#fff,stroke:#008670,stroke-width:1px
     style F fill:#ED7100,color:#fff,stroke:#BD5A00,stroke-width:1px
     style G fill:#6B7280,color:#fff,stroke:#555B66,stroke-width:1px
     style H fill:#7AA116,color:#fff,stroke:#618011,stroke-width:1px
@@ -190,27 +188,45 @@ No fixed difficulty points. Score reflects **outcome quality**, not estimated ef
 
 Tracked daily. All sensitive data encrypted in data lake.
 
-| Category | Type | Tracking | Sensitive |
-|----------|------|----------|-----------|
-| Exercise / sleep / hydration | healthy | Binary + duration | No |
-| Supplement/medication compliance | healthy | On-schedule yes/no | Yes |
-| Coding practice (RAPID drills) | healthy | Problem count + time | No |
-| Learning (docs, videos, courses) | healthy | Duration + source | No |
-| YouTube consumption | neutral | Duration | No |
-| Gaming — mobile (Royal Match, ~10min) | quota | Session count + duration | No |
-| Gaming — desktop (WoW, ~1-3h) | quota | Session count + duration | No |
-| Porn | quota | Duration | Yes |
-| 3-CMC | addiction-therapy | Amount + time, **decreasing quota** | Yes |
-| K (tip-touch amount) | addiction-therapy | Amount + time | Yes |
+| Category | Type | Unit (user reports) | Quota | Time-sensitive | Sensitive |
+|----------|------|---------------------|-------|----------------|-----------|
+| Exercise / sleep / hydration | healthy | Binary + duration | — | — | No |
+| Supplement/medication compliance | healthy | 4x daily check (M/N/A/E) + async | — | — | Yes |
+| Coding practice (RAPID drills) | healthy | Problem count + time | — | — | No |
+| Learning (docs, videos, courses) | healthy | Duration + source | — | — | No |
+| YouTube consumption | neutral | Blocks (30min units) | — | — | No |
+| Gaming — mobile (Royal Match) | quota | Session count + duration | Weekly ceiling | — | No |
+| Gaming — desktop (WoW) | quota | Session count + duration | Weekly ceiling | — | No |
+| Porn | quota | Blocks (15min units) | Weekly ceiling | — | Yes |
+| 3-CMC | addiction-therapy | Lines | Decreasing → 0 → penance | — | Yes |
+| K (tip-touch) | addiction-therapy | Touches | Decreasing → 0 → penance | — | Yes |
+| X (ecstasy) | addiction-therapy | Half-pills | Decreasing → 0 → penance | — | Yes |
+| BCD | controlled-use | Clouds (inhales) | Daily ceiling | Not during work hours + cooldown | Yes |
+| THC (weed) | addiction-therapy | Clouds (inhales) | Decreasing → 0 → penance | Not during work hours + cooldown | Yes |
 
-**Quota mechanic**: `addiction-therapy` and `quota` categories have a **target ceiling that decreases over time**. Integra tracks actual vs. quota and coaches toward reduction.
+**Quota mechanics** — three tiers:
 
 ```
-quota_week_n = quota_week_0 × decay_factor^n
-actual vs quota → score adjustment
-  under quota = bonus +1
-  at quota    = base only
-  over quota  = score 0 + coaching flag
+# addiction-therapy (3-CMC, K, X, THC): decay → 0 → penance
+  quota_week_n    = quota_week_0 × decay_factor^n
+  under quota     = bonus +1
+  at quota        = base only
+  over quota      = score 0 + coaching flag
+  at zero + use   = score 0 + penance task
+  THC also:       time-gate (not during work hours) + cooldown
+
+# controlled-use (BCD): stable ceiling + time rules
+  daily ceiling   = fixed (no decay)
+  under ceiling   = bonus +1
+  at ceiling      = base only
+  over ceiling    = score 0 + coaching flag
+  work-hours use  = score 0 + coaching flag
+  cooldown broken = score 0 + coaching flag
+
+# quota (gaming, porn): weekly ceiling
+  under quota     = bonus +1
+  at quota        = base only
+  over quota      = score 0 + coaching flag
 ```
 
 ### Stack = Sum Metric
@@ -223,19 +239,6 @@ Three granularities, computed per origin, per nature, or combined:
 | `stack_week` | This week (Mon–Sun) | Weekly trend |
 | `stack_total` | All time | Progress trajectory |
 
-**Stack breakdown example:**
-```
-Day 2026-02-28:
-  job:     3 tasks, score 7  (2 base + 5 bonus)
-  reward:  5 tasks, score 4  (4 healthy + 1 under-quota bonus)
-  total:   8 tasks, score 11
-
-Week 2026-W09:
-  job:     12 tasks, score 28
-  reward:  31 tasks, score 22
-  total:   43 tasks, score 50
-```
-
 ### Architecture: GH Issues + Labels + MCP
 
 Tasks are GH issues in the integra repo. Labels encode classification:
@@ -244,7 +247,7 @@ Tasks are GH issues in the integra repo. Labels encode classification:
 |-------------|--------|---------|
 | `origin:` | `planned`, `user-request`, `choice` | `origin:planned` |
 | `nature:` | `job`, `reward` | `nature:reward` |
-| `category:` | `healthy`, `quota`, `addiction-therapy`, `neutral` | `category:quota` |
+| `category:` | `healthy`, `quota`, `addiction-therapy`, `controlled-use`, `neutral` | `category:quota` |
 | `score:` | numeric | `score:3` |
 
 MCP tool `query_stack` computes stacks by querying GH API:
@@ -265,10 +268,10 @@ Three independent tracks, all parallelizable.
 | Track | Tasks | Dependency | Owner |
 |-------|-------|------------|-------|
 | **0A: Repo** | Create `bprzybysz/integra` repo, init structure, CLAUDE.md, .gitignore | None | integra |
-| **0B: Plugins** | Install `prp-core` + `ralph-loop` globally (`~/.claude/plugins/`), verify commands work in any project | None | user |
+| **0B: Plugins** | Install `prp-core` globally (includes ralph loop). `prp-core@prp-marketplace` via `/plugin marketplace add wirasm/prps-agentic-eng` then `/plugin install prp-core`. | None | user |
 | **0C: GH Project** | Create project board, define sprint columns, link to integra repo | None | integra |
 
-**Quality gate**: `gh project list` shows board, `/prp-core-create` responds, `integra/CLAUDE.md` exists.
+**Quality gate**: `gh project list` shows board, `/prp-plan` responds, `integra/CLAUDE.md` exists.
 
 **Parallel execution diagram:**
 
@@ -283,9 +286,8 @@ gantt
     Write CLAUDE.md + .claude/         :a2, 2, 4
 
     section Track 0B
-    Install prp-core plugin            :b1, 0, 1
-    Install ralph-loop plugin          :b2, 1, 2
-    Verify commands + test run         :b3, 2, 4
+    Install prp-core plugin (includes ralph) :b1, 0, 2
+    Verify commands + test run         :b2, 2, 4
 
     section Track 0C
     Create GH Project board            :c1, 0, 1
@@ -328,8 +330,8 @@ The actual goal. Two parallel tracks.
 | Track | Tasks | Dependency | Owner |
 |-------|-------|------------|-------|
 | **2A: Coding Drills** | RAPID framework practice (15 patterns × 5 problems each), timed sessions, progress tracking via GH Project issues. | Stage 0C (GH Project for tracking) | **user** |
-| **2B: User Data Collection** | Collect drugs/supplements/dietary via Telegram bot questionnaire, ingest to data lake, structured as queryable records. Includes scheduled drug/supplement interrogation. | Stage 1C (Telegram HIL) + Stage 1B (Data Lake) | integra |
-| **2C: Claude Code History** | Reanalyse CC session data after data lake + deps operational. Data already exists: `interviews/toptal/data/claude-history-all.zip.part-a{a,b,c}` (encrypted, split). Scripts exist: `interviews/toptal/scripts/extract_prompts.py`, `visualize_prompts.py`. Charts exist: `interviews/toptal/charts/` (9 PNGs). User provides `age` secret key at ingestion time. Cross-reference with drug/supplement schedule from 2B. | 2B complete + user provides decryption key | integra |
+| **2B: User Data Collection** | Collect drugs/supplements/dietary via Telegram bot questionnaire, ingest to data lake, structured as queryable records. Includes scheduled drug/supplement interrogation (4x daily: M/N/A/E + async). User provides supplement/prescription drug list with package photos + purchase links during onboarding interview. **Daily log advisor** (10 rules from toptal KB): sleep/energy/mood assessment, ADHD-aware coaching, IBS/grief/freeze detection, quota tracking. See `tmp/context-from-toptal.md` and `tmp/drugs-tracking-reward-task.md` for full spec. New module: `integra/integrations/advisor.py`. | Stage 1C (Telegram HIL) + Stage 1B (Data Lake) | integra |
+| **2C: Claude Code History** | Reanalyse CC session data after data lake + deps operational. Data already exists: `interviews/toptal/data/claude-history-all.zip.part-a{a,b,c}` (encrypted, split). Scripts exist: `interviews/toptal/scripts/extract_prompts.py` (2098 records), `visualize_prompts.py`. Charts exist: `interviews/toptal/charts/` (9 PNGs). `integra/data/cc_history.py` + `analyze_cc_productivity()` already built. User provides `age` secret key at ingestion time. Cross-reference with drug/supplement schedule from 2B to find productivity correlations. | 2B complete + user provides decryption key | integra |
 
 **Quality gate**: 75 problems solved, pattern recognition >80% accuracy, all user health data ingested and queryable, claude code history analysis queued.
 
@@ -364,7 +366,7 @@ Planned at pre-stage level only. Details deferred to PRP generation when Stage 2
 graph TB
     S0A[0A: integra repo] --> S1A[1A: Orchestrator]
     S0A --> S1B[1B: Data Lake]
-    S0B[0B: Plugins] --> S1A
+    S0B[0B: Plugins]
     S0C[0C: GH Project] --> S2A[2A: Coding Drills]
     S0C --> SQS[query_stack MCP tool]
 
@@ -400,10 +402,13 @@ graph TB
 ```
 integra/
 ├── CLAUDE.md                          # Project rules, validation commands, architecture notes
+├── ROADMAP.md                         # This file — stages, deps, quality gates
+├── .mcp.json                          # MCP server config (tracked in git)
 ├── pyproject.toml                     # uv, ruff, mypy, pytest
 ├── .claude/
 │   ├── commands/
-│   │   └── ingest-data.md             # Custom: trigger data ingestion
+│   │   ├── ingest-data.md             # Custom: trigger data ingestion
+│   │   └── youtube-extract.md         # Custom: extract KB from YouTube video
 │   ├── hooks/
 │   │   └── format-after-edit.sh       # ruff format + ruff check --fix
 │   └── settings.local.json            # Permissions, MCP servers
@@ -415,23 +420,43 @@ integra/
 │   │   ├── registry.py                # Tool schemas + dispatch + HIL flags
 │   │   └── config.py                  # Pydantic-settings
 │   ├── integrations/
-│   │   └── telegram.py                # HIL confirm/notify
+│   │   ├── telegram.py                # HIL confirm/notify
+│   │   ├── scheduler.py              # Scheduled questionnaires (morning/evening)
+│   │   └── questionnaire.py          # Telegram questionnaire flows
+│   │   # advisor.py                  # Stage 2B: daily log advisor (10 rules) — not yet created
 │   └── data/
 │       ├── mcp_server.py              # Data MCP gateway
 │       ├── ingestion.py               # Raw → structured pipeline
-│       └── encryption.py              # age encrypt/decrypt helpers
+│       ├── encryption.py              # age encrypt/decrypt helpers
+│       ├── collectors.py              # Supplement, drug, meal data collectors
+│       ├── schemas.py                 # Data models + RewardCategory enum
+│       ├── cc_history.py              # CC session history analysis
+│       ├── youtube.py                 # YouTube transcript + metadata extraction
+│       └── audit.py                   # Audit log writer
 ├── data/                              # .gitignored
 │   ├── raw/                           # Landing zone (unencrypted, transient)
 │   ├── lake/                          # Encrypted structured storage
 │   └── audit/                         # Access logs
+├── tmp/                              # .gitignored — working notes, KB imports
+│   ├── context-from-toptal.md        # Stage 2B+ actionable import
+│   └── toptal-interviews-kb-report.md # Full KB assessment
 └── tests/
     ├── test_orchestrator.py
     ├── test_registry.py
     ├── test_data_mcp.py
-    └── test_telegram.py
+    ├── test_telegram.py
+    ├── test_encryption.py
+    ├── test_app.py
+    ├── test_questionnaire.py
+    ├── test_cc_history.py
+    ├── test_schemas.py
+    ├── test_scheduler.py
+    ├── test_collectors.py
+    ├── test_audit.py
+    └── test_youtube.py
 ```
 
-> PRP commands (`/prp-core-create`, `/prp-core-execute`, etc.) provided by the globally-installed `prp-core` plugin — no local files needed. Agents and PRPs/ directories created by the plugin on first use. `examples/` deferred until there's real code to pattern-match.
+> PRP commands (`/prp-prd`, `/prp-plan`, `/prp-implement`, etc.) provided by the globally-installed `prp-core` plugin — no local files needed.
 
 ---
 
@@ -450,7 +475,8 @@ integra/
 - Stages: `stage-0`, `stage-1`, `stage-2`, `stage-3`
 - Ownership: `user-task`, `integra-task`
 - Status: `blocked`, `data-sensitive`
-- Task/Quest: `origin:planned`, `origin:user-request`, `origin:choice`, `nature:job`, `nature:reward`, `category:healthy`, `category:quota`, `category:addiction-therapy`, `category:neutral`, `score:N`
+- Task/Quest: `origin:planned`, `origin:user-request`, `origin:choice`, `nature:job`, `nature:reward`, `category:healthy`, `category:quota`, `category:addiction-therapy`, `category:controlled-use`, `category:neutral`, `score:N`
+- Flags: `flag:penance`
 
 ---
 
@@ -472,36 +498,36 @@ integra/
 ## 10. Plugin Setup + Cheatsheet
 
 **Install** (one-time, ~5 min total):
-1. Install `prp-core` + `ralph-loop` plugins globally
-2. Delete manual `generate-prp.md` / `execute-prp.md` from 4 existing CE projects (plugin replaces them)
+1. `/plugin marketplace add wirasm/prps-agentic-eng` then `/plugin install prp-core`
+2. Delete manual `generate-prp.md` / `execute-prp.md` from existing CE projects (plugin replaces them)
 3. Domain-specific agents, hooks, rules.md stay untouched
 
 ### Command cheatsheet
 
 ```
-# PRP workflow (via prp-core plugin)
-/prp-core-create "feature description"    # Generate PRP
-/prp-core-execute                          # Execute PRP with validation
-/prp-core-run-all                          # Full pipeline: create → execute → commit → PR
+# PRP workflow (via prp-core plugin — includes ralph loop)
 /prp-prd                                   # Generate PRD only
 /prp-plan                                  # Generate plan from PRD
 /prp-implement                             # Implement from plan
 /prp-commit                                # Commit with conventional message
 /prp-pr                                    # Create PR from branch
 /prp-review                                # Review current changes
-/prp-debug                                 # Investigate + fix issue
-/prp-issue-investigate                     # Deep investigation
-/prp-issue-fix                             # Fix from investigation
+/prp-review-agents                         # Multi-agent PR review
+/prp-debug                                 # Deep root cause analysis
+/prp-issue-investigate                     # Deep investigation, post to GH
+/prp-issue-fix                             # Fix from investigation artifact
+/prp-codebase-question                     # Research codebase questions
+/prp-research-team                         # Design dynamic research team
 
-# Ralph loop (via ralph-loop plugin)
-/ralph-loop "task. Output <promise>DONE</promise> when complete." \
-  --completion-promise "DONE" --max-iterations 30
-/cancel-ralph                              # Stop active loop
+# Ralph loop (built into prp-core)
+/prp-ralph                                 # Autonomous execution until validations pass
+/prp-ralph-cancel                          # Stop active loop
 
 # Workflow: PRP + Ralph (autonomous feature)
-/prp-core-create "feature"                 # Step 1: generate PRP
-# Review PRP, approve                      # Step 2: human gate
-/prp-ralph                                 # Step 3: autonomous execution with ralph loop
+/prp-prd                                   # Step 1: generate PRD
+/prp-plan                                  # Step 2: plan from PRD
+# Review plan, approve                     # Step 3: human gate
+/prp-ralph                                 # Step 4: autonomous execution with ralph loop
 ```
 
 ---
@@ -521,11 +547,13 @@ integra/
 | **Quality gate** | Automated or manual checkpoint that must pass before progressing to next stage. |
 | **PIV** | Plan → Implement → Validate. Core workflow loop from context engineering methodology. |
 | **CE** | Context Engineering — methodology for structuring AI agent inputs to maximize one-pass success. |
-| **prp-core** | Claude Code plugin providing PRP workflow commands (generate, execute, commit, PR, review). |
-| **ralph-loop** | Claude Code plugin providing autonomous execution loops via stop-hook mechanism. |
+| **prp-core** | Claude Code plugin (`prp-core@prp-marketplace` from `wirasm/prps-agentic-eng`) providing PRP workflow commands + built-in ralph loop. |
+| **Advisor** | Daily log advisor module (10 rules). ADHD/health-aware coaching: sleep, energy, mood, IBS, grief, freeze detection, quota tracking. Triggers after daily questionnaire via Telegram. |
 | **RAPID** | Read & Restate → Assess Pattern → Plan in Pseudocode → Implement → Debug. 0-shot coding protocol from speed-diagnosis.md. |
 | **Stack** | Sum metric of task scores. Computed per day/week/total, grouped by origin and/or nature. |
 | **Quota** | Decreasing ceiling for tracked behaviors (gaming, substances). `quota_week_n = quota_week_0 × decay^n`. Under quota = bonus. |
+| **Controlled-use** | Substance type with stable daily ceiling + time-gate (work hours blocked) + cooldown. For legal therapeutic use (IBS, anxiety). Currently: BCD. |
+| **Penance** | Mandatory job task assigned on zero-quota relapse (addiction-therapy). E.g. gym session, study block, cleanup. |
 | **Origin** | How a task was created: `planned` (roadmap), `user-request` (ad-hoc), `choice` (picked from options). |
 | **Nature** | What kind of task: `job` (scored work) or `reward` (behavior tracking). |
 | **query_stack** | MCP tool that queries GH Issues by label + date range to compute stack scores. |
