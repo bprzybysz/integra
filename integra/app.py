@@ -24,9 +24,12 @@ from integra.data.collectors import (
 from integra.integrations.channels import ChannelRouter, TelegramProvider
 from integra.integrations.channels.telegram import (
     register_command_handlers,
+    set_admin_bot,
     set_diary_callback,
     set_interrupt_callback,
+    set_requester_ids,
 )
+from integra.integrations.projects import GitHubProvider, ProjectRouter
 from integra.integrations.questionnaire import run_questionnaire
 from integra.integrations.scheduler import Scheduler
 from integra.integrations.telegram_questionnaire_ui import TelegramQuestionnaireUI
@@ -37,6 +40,7 @@ _provider: TelegramProvider | None = None
 _router: ChannelRouter | None = None
 _scheduler: Scheduler | None = None
 _questionnaire_ui: TelegramQuestionnaireUI | None = None
+_project_router: ProjectRouter | None = None
 
 
 async def _ask_confirmation_handler(**kwargs: object) -> str:
@@ -71,9 +75,16 @@ def _register_tool_handlers() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Start and stop the Telegram bot and scheduler alongside the FastAPI server."""
-    global _provider, _router, _scheduler, _questionnaire_ui  # noqa: PLW0603
+    global _provider, _router, _scheduler, _questionnaire_ui, _project_router  # noqa: PLW0603
 
     _register_tool_handlers()
+
+    # Wire ProjectRouter
+    if settings.github_repo:
+        _project_router = ProjectRouter()
+        gh_provider = GitHubProvider(repo=settings.github_repo)
+        await gh_provider.initialize()
+        _project_router.register(gh_provider)
 
     if settings.telegram_bot_token:
         _provider = TelegramProvider()
@@ -91,6 +102,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         _router = ChannelRouter()
         _router.register(_provider)
+
+        # Wire requester-tier user IDs
+        set_requester_ids(set(settings.telegram_requester_ids))
+        set_admin_bot(_provider.bot)
 
         logger.info("Telegram bot started via TelegramProvider")
 

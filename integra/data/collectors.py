@@ -246,3 +246,90 @@ async def query_health_data(**kwargs: Any) -> str:
         filters = None
 
     return await query_data(category=category, filters=filters, config=cfg)
+
+
+async def store_request(**kwargs: Any) -> str:
+    """Store an incoming request in the data lake (requests category).
+
+    Accepts: sender_id, sender_name, text, category, ruliade.
+    """
+    from integra.data.schemas import RequestCategory, make_incoming_request
+
+    cfg: Settings = kwargs.pop("config", None) or settings
+    sender_id = int(kwargs.get("sender_id", 0))
+    sender_name = str(kwargs.get("sender_name", ""))
+    text = str(kwargs.get("text", ""))
+    category = str(kwargs.get("category", RequestCategory.OTHER))
+    ruliade = str(kwargs.get("ruliade", "notify admin on next activity sign"))
+
+    if not text:
+        return json.dumps({"error": "text is required"})
+
+    request = make_incoming_request(
+        sender_id=sender_id,
+        sender_name=sender_name,
+        text=text,
+        category=category,
+        ruliade=ruliade,
+    )
+    _store_record(dict(request), "requests", cfg)
+    logger.info("Stored request from %s (sender_id=%d)", sender_name, sender_id)
+    return json.dumps({"status": "stored", "request_id": request["request_id"]})
+
+
+async def upsert_request(**kwargs: Any) -> str:
+    """Update an existing request's status in the data lake.
+
+    Accepts: request_id, status (pending|acknowledged|done).
+    Note: creates a new status-update record; the original is immutable.
+    """
+    cfg: Settings = kwargs.pop("config", None) or settings
+    request_id = str(kwargs.get("request_id", ""))
+    status = str(kwargs.get("status", ""))
+
+    if not request_id or not status:
+        return json.dumps({"error": "request_id and status are required"})
+
+    update_record = {
+        "request_id": request_id,
+        "status": status,
+        "updated_at": datetime.now(UTC).isoformat(),
+        "_record_type": "request_status_update",
+    }
+    _store_record(update_record, "requests", cfg)
+    logger.info("Upserted request %s → %s", request_id, status)
+    return json.dumps({"status": "updated", "request_id": request_id, "new_status": status})
+
+
+async def delete_request(**kwargs: Any) -> str:
+    """Soft-delete a request by storing a deletion tombstone.
+
+    Accepts: request_id.
+    """
+    cfg: Settings = kwargs.pop("config", None) or settings
+    request_id = str(kwargs.get("request_id", ""))
+
+    if not request_id:
+        return json.dumps({"error": "request_id is required"})
+
+    tombstone = {
+        "request_id": request_id,
+        "deleted_at": datetime.now(UTC).isoformat(),
+        "_record_type": "request_deletion",
+    }
+    _store_record(tombstone, "requests", cfg)
+    logger.info("Deleted request %s", request_id)
+    return json.dumps({"status": "deleted", "request_id": request_id})
+
+
+async def query_requests(**kwargs: Any) -> str:
+    """Query incoming requests from the data lake.
+
+    Accepts: status (pending|acknowledged|done, default=pending).
+    """
+    from integra.data.mcp_server import query_data
+
+    cfg: Settings = kwargs.pop("config", None) or settings
+    status = str(kwargs.get("status", "pending"))
+    filters: dict[str, str] = {"status": status} if status else {}
+    return await query_data(category="requests", filters=filters or None, config=cfg)

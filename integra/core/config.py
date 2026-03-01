@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     # Telegram HIL
     telegram_bot_token: str = ""
     telegram_admin_chat_id: int = 0
+    telegram_requester_ids: list[int] = []  # comma-separated in env
 
     # Data Lake
     age_recipient: str = ""
@@ -34,6 +35,11 @@ class Settings(BaseSettings):
 
     # API Security
     chat_api_key: str = ""
+
+    # Project management
+    github_repo: str = ""  # "owner/repo" for GitHubProvider
+    linear_team_id: str = ""  # Linear team ID
+    linear_api_key: str = ""  # Linear API key (future HTTP client)
 
     # App
     app_host: str = "0.0.0.0"

@@ -58,7 +58,12 @@ integra/
 │   ├── channels/
 │   │   ├── base.py               # CommunicationProvider ABC, Capability, Sensitivity
 │   │   ├── router.py             # ChannelRouter (sensitivity-based dispatch)
-│   │   └── telegram.py           # TelegramProvider + /diary, /task commands
+│   │   └── telegram.py           # TelegramProvider + /diary, /task + requester-tier
+│   ├── projects/
+│   │   ├── base.py               # ProjectProvider ABC, IssueState, ProjectCapability
+│   │   ├── router.py             # ProjectRouter (default delegation)
+│   │   ├── github.py             # GitHubProvider (gh CLI subprocess)
+│   │   └── linear.py             # LinearProvider (MCP-only stub)
 │   ├── questionnaire.py          # Question/Questionnaire dataclasses + run_questionnaire
 │   ├── questionnaire_ui.py       # QuestionnaireUI Protocol
 │   ├── telegram_questionnaire_ui.py  # TelegramQuestionnaireUI implementation
@@ -101,6 +106,43 @@ Agent never reads raw files. MCP gateway decrypts on-demand, filters, audits.
 | ruff | Lint + format |
 | mypy | Type checking (strict) |
 | pytest | Testing |
+
+## Issue Types
+
+- **hub**: parent/epic for grouping (no PRP)
+- **feature** (`feat:`): new capability (PRP usually required)
+- **enhancement** (`enhance:`): extend existing (PRP 0..1)
+- **bug** (`bug:`): fix (PRP only for complex bugs)
+- **doc** (`doc:`): docs only (PRP rarely)
+- **misc** (`misc:`): infra/config (PRP rarely)
+
+GH labels: `type:hub`, `type:feature`, `type:enhancement`, `type:bug`, `type:doc`, `type:misc`
+
+## PRP Workflow
+
+- **Naming**: `prp-<NNN>-slug.md` (NNN = GH issue number, zero-padded 3 digits)
+- **Multi-PRP**: `prp-<NNN>.[A-Z]-slug.md` for complex issues
+- **Relation**: 1:0..N — hub/simple issues skip PRP
+- **Location**: `.claude/PRPs/plans/`
+- **Flow**: GH issue → type check → /prp-plan if needed → /prp-ralph → /prp-sync
+- **Full guide**: `memory/prp-guide.md`, `memory/gh-issues.md`
+
+## PRP ↔ GH Sync Rules
+
+- After `/prp-plan`: `gh issue comment <N> -b "PRP created: prp-<NNN>-slug.md"`
+- After `/prp-ralph` completes: `gh issue comment <N> -b "Implementation complete"` + close if all PRPs done
+- Before `/prp-plan`: check `gh issue view <N>` — if closed, warn user
+- After closing issue via `gh`: check if active PRP in `.claude/PRPs/plans/prp-<NNN>-*` — warn if mismatch
+
+## Incoming Requests
+
+- Requester-tier Telegram users: **any text message** → stored as `IncomingRequest` (no `/request` command needed)
+- Admin messages: handled by /diary, /task, /help — not treated as requests
+- Config: `TELEGRAM_REQUESTER_IDS` env var (comma-separated int list)
+- Stored in data lake (`requests` category, encrypted)
+- Admin notified (fire-and-forget) on receipt
+- CRUD via collectors: `store_request`, `upsert_request`, `delete_request`, `query_requests`
+- Unknown users: silently ignored
 
 ## Stage Reference
 

@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import Callable, Coroutine
 from typing import Any
 
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Application, ApplicationBuilder, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, ApplicationBuilder, CallbackQueryHandler, ContextTypes, MessageHandler
+from telegram.ext import filters as tg_filters
 
 from integra.core.config import settings
+from integra.data.collectors import store_request
 from integra.integrations.channels.base import (
     Capability,
     CommunicationProvider,
@@ -210,6 +213,20 @@ class TelegramProvider(CommunicationProvider):
 
 _diary_callback: Callable[[], Coroutine[Any, Any, None]] | None = None
 _interrupt_callback: Callable[[str], Coroutine[Any, Any, None]] | None = None
+_requester_ids: set[int] = set()
+_admin_bot_ref: Bot | None = None  # set by set_admin_bot
+
+
+def set_requester_ids(ids: set[int]) -> None:
+    """Set requester-tier user IDs (non-admin users who can send requests)."""
+    global _requester_ids  # noqa: PLW0603
+    _requester_ids = ids
+
+
+def set_admin_bot(bot: Bot) -> None:
+    """Set bot instance for admin notifications from requester handler."""
+    global _admin_bot_ref  # noqa: PLW0603
+    _admin_bot_ref = bot
 
 
 def set_diary_callback(fn: Callable[[], Coroutine[Any, Any, None]]) -> None:
@@ -290,6 +307,58 @@ async def _handle_help_command(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
 
+async def _handle_requester_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle any text message from a requester-tier user.
+
+    Security: admin messages are ignored here (admin uses /diary, /task).
+    Unknown users are silently ignored.
+    Any text from requester-tier → stored as IncomingRequest.
+    """
+    if update.message is None or update.message.from_user is None:
+        return
+
+    user = update.message.from_user
+    uid = user.id
+    admin_id = settings.telegram_admin_chat_id
+
+    if uid == admin_id:
+        return  # admin handled by command handlers
+
+    if uid not in _requester_ids:
+        logger.debug("Ignored message from unknown user_id=%d", uid)
+        return
+
+    text = update.message.text or ""
+    if not text.strip():
+        return
+
+    sender_name = user.first_name or str(uid)
+
+    result_json = await store_request(
+        sender_id=uid,
+        sender_name=sender_name,
+        text=text,
+    )
+    await update.message.reply_text("Sent.")
+
+    # Notify admin (fire-and-forget)
+    if _admin_bot_ref is not None:
+        try:
+            result = json.loads(result_json)
+            rid = result.get("request_id", "?")
+            async def _notify() -> None:
+                await _admin_bot_ref.send_message(
+                    chat_id=admin_id,
+                    text=f"New request from {sender_name}:\n{text}\n\n[{rid}]",
+                )
+
+            task: asyncio.Task[None] = asyncio.create_task(_notify())
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
+        except Exception as exc:
+            logger.warning("Admin notification failed: %s", exc)
+
+
 def register_command_handlers(app: Application[Any, Any, Any, Any, Any, Any]) -> None:
     """Register all command handlers on Application."""
     from telegram.ext import CommandHandler
@@ -298,3 +367,10 @@ def register_command_handlers(app: Application[Any, Any, Any, Any, Any, Any]) ->
     app.add_handler(CommandHandler("help", _handle_help_command))
     app.add_handler(CommandHandler("diary", _handle_diary_command))
     app.add_handler(CommandHandler("task", _handle_task_command))
+    # MessageHandler for requester-tier: any non-command text
+    app.add_handler(
+        MessageHandler(
+            tg_filters.TEXT & ~tg_filters.COMMAND,
+            _handle_requester_message,
+        )
+    )

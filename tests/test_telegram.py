@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,11 +13,13 @@ from integra.integrations.channels.telegram import (
     TelegramProvider,
     _handle_diary_command,
     _handle_help_command,
+    _handle_requester_message,
     _handle_start_command,
     _handle_task_command,
     _pending,
     set_diary_callback,
     set_interrupt_callback,
+    set_requester_ids,
 )
 
 
@@ -293,3 +296,104 @@ async def test_help_command_lists_commands() -> None:
     call_text = update.message.reply_text.call_args[0][0]
     assert "/diary" in call_text
     assert "/task" in call_text
+
+
+# ---------------------------------------------------------------------------
+# Requester-tier tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_requester_message_stored() -> None:
+    """Requester-tier user text message → stored as IncomingRequest."""
+    set_requester_ids({99001})
+
+    stored: list[dict[str, Any]] = []
+
+    async def _fake_store(**kwargs: Any) -> str:
+        stored.append(kwargs)
+        return json.dumps({"status": "stored", "request_id": "99001_1"})
+
+    message = AsyncMock()
+    message.from_user = MagicMock()
+    message.from_user.id = 99001
+    message.from_user.first_name = "Mom"
+    message.text = "buy milk please"
+
+    update = MagicMock()
+    update.message = message
+
+    with (
+        patch("integra.core.config.settings") as mock_settings,
+        patch("integra.integrations.channels.telegram.settings", mock_settings),
+        patch("integra.integrations.channels.telegram.store_request", _fake_store),
+    ):
+        mock_settings.telegram_admin_chat_id = 12345
+        await _handle_requester_message(update, MagicMock())
+
+    assert len(stored) == 1
+    assert stored[0]["text"] == "buy milk please"
+    message.reply_text.assert_awaited_once_with("Sent.")
+
+
+@pytest.mark.asyncio
+async def test_requester_message_unknown_user_ignored() -> None:
+    """Unknown user text message → silently ignored."""
+    set_requester_ids({99001})
+
+    stored: list[dict[str, Any]] = []
+
+    async def _fake_store(**kwargs: Any) -> str:
+        stored.append(kwargs)
+        return json.dumps({"status": "stored", "request_id": "x"})
+
+    message = AsyncMock()
+    message.from_user = MagicMock()
+    message.from_user.id = 99999  # not in requester_ids
+    message.from_user.first_name = "Stranger"
+    message.text = "hello"
+
+    update = MagicMock()
+    update.message = message
+
+    with (
+        patch("integra.core.config.settings") as mock_settings,
+        patch("integra.integrations.channels.telegram.settings", mock_settings),
+        patch("integra.integrations.channels.telegram.store_request", _fake_store),
+    ):
+        mock_settings.telegram_admin_chat_id = 12345
+        await _handle_requester_message(update, MagicMock())
+
+    assert stored == []
+    message.reply_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_admin_message_not_stored_as_request() -> None:
+    """Admin text message → not stored as IncomingRequest (admin uses commands)."""
+    set_requester_ids({99001})
+
+    stored: list[dict[str, Any]] = []
+
+    async def _fake_store(**kwargs: Any) -> str:
+        stored.append(kwargs)
+        return json.dumps({"status": "stored", "request_id": "x"})
+
+    message = AsyncMock()
+    message.from_user = MagicMock()
+    message.from_user.id = 12345  # admin
+    message.from_user.first_name = "Admin"
+    message.text = "some text"
+
+    update = MagicMock()
+    update.message = message
+
+    with (
+        patch("integra.core.config.settings") as mock_settings,
+        patch("integra.integrations.channels.telegram.settings", mock_settings),
+        patch("integra.integrations.channels.telegram.store_request", _fake_store),
+    ):
+        mock_settings.telegram_admin_chat_id = 12345
+        await _handle_requester_message(update, MagicMock())
+
+    assert stored == []

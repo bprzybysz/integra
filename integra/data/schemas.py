@@ -432,3 +432,59 @@ def make_penance_record(
         penance_completed=False,
         penance_completed_at="",
     )
+
+
+class RequestStatus(StrEnum):
+    """Status lifecycle for incoming requests."""
+
+    PENDING = "pending"
+    ACKNOWLEDGED = "acknowledged"
+    DONE = "done"
+
+
+class RequestCategory(StrEnum):
+    """Rough category for incoming requests."""
+
+    SHOPPING = "shopping"
+    ERRAND = "errand"
+    OTHER = "other"
+
+
+class IncomingRequest(TypedDict):
+    """An incoming request from a Telegram requester-tier user."""
+
+    request_id: str  # "{sender_id}_{timestamp_ms}" — unique key
+    sender_name: str  # Telegram first_name
+    sender_id: int  # Telegram user ID
+    text: str  # raw request text
+    timestamp: str  # ISO 8601
+    status: str  # RequestStatus value
+    category: str  # RequestCategory value — classifier sets this
+    nature: str  # always "job"
+    ruliade: str  # NL timing rules for notification
+
+
+def make_incoming_request(
+    sender_id: int,
+    sender_name: str,
+    text: str,
+    category: str = RequestCategory.OTHER,
+    ruliade: str = "notify admin on next activity sign",
+    timestamp: str | None = None,
+) -> IncomingRequest:
+    """Create an IncomingRequest with auto-generated request_id."""
+    import time
+
+    ts = timestamp or datetime.now().astimezone().isoformat()
+    ts_ms = int(time.time() * 1000)
+    return IncomingRequest(
+        request_id=f"{sender_id}_{ts_ms}",
+        sender_name=sender_name,
+        sender_id=sender_id,
+        text=text,
+        timestamp=ts,
+        status=RequestStatus.PENDING,
+        category=category,
+        nature="job",
+        ruliade=ruliade,
+    )

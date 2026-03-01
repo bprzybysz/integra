@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pyrage
+import pytest
 
 from integra.core.config import Settings
 from integra.data.collectors import (
@@ -28,6 +29,12 @@ def _make_config(tmp_path: Path) -> Settings:
         data_audit_path=tmp_path / "audit",
         data_raw_path=tmp_path / "raw",
     )
+
+
+@pytest.fixture
+def dummy_age_key() -> tuple[str, str]:
+    identity = pyrage.x25519.Identity.generate()
+    return str(identity.to_public()), str(identity)
 
 
 # ── collect_supplement_stack ─────────────────────────────────────
@@ -181,3 +188,76 @@ class TestQueryHealthData:
             await query_health_data(category="intake", filters="bad", config=cfg)
             call_kwargs = mock_query.call_args[1]
             assert call_kwargs["filters"] is None
+
+
+# ---------------------------------------------------------------------------
+# IncomingRequest tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_store_request_happy_path(tmp_path: Path, dummy_age_key: tuple[str, str]) -> None:
+    from integra.data.collectors import store_request
+
+    recipient, _ = dummy_age_key
+    cfg = Settings(
+        age_recipient=recipient,
+        data_lake_path=tmp_path / "lake",
+        data_audit_path=tmp_path / "audit",
+    )
+    result_json = await store_request(
+        config=cfg,
+        sender_id=12345,
+        sender_name="Mom",
+        text="buy milk please",
+    )
+    result = json.loads(result_json)
+    assert result["status"] == "stored"
+    assert "request_id" in result
+    assert (tmp_path / "lake" / "requests").exists()
+
+
+@pytest.mark.asyncio
+async def test_store_request_missing_text(tmp_path: Path, dummy_age_key: tuple[str, str]) -> None:
+    from integra.data.collectors import store_request
+
+    recipient, _ = dummy_age_key
+    cfg = Settings(
+        age_recipient=recipient,
+        data_lake_path=tmp_path / "lake",
+        data_audit_path=tmp_path / "audit",
+    )
+    result_json = await store_request(config=cfg, sender_id=1, sender_name="X", text="")
+    result = json.loads(result_json)
+    assert "error" in result
+
+
+@pytest.mark.asyncio
+async def test_upsert_request(tmp_path: Path, dummy_age_key: tuple[str, str]) -> None:
+    from integra.data.collectors import upsert_request
+
+    recipient, _ = dummy_age_key
+    cfg = Settings(
+        age_recipient=recipient,
+        data_lake_path=tmp_path / "lake",
+        data_audit_path=tmp_path / "audit",
+    )
+    result_json = await upsert_request(config=cfg, request_id="12345_999", status="acknowledged")
+    result = json.loads(result_json)
+    assert result["status"] == "updated"
+    assert result["new_status"] == "acknowledged"
+
+
+@pytest.mark.asyncio
+async def test_delete_request(tmp_path: Path, dummy_age_key: tuple[str, str]) -> None:
+    from integra.data.collectors import delete_request
+
+    recipient, _ = dummy_age_key
+    cfg = Settings(
+        age_recipient=recipient,
+        data_lake_path=tmp_path / "lake",
+        data_audit_path=tmp_path / "audit",
+    )
+    result_json = await delete_request(config=cfg, request_id="12345_999")
+    result = json.loads(result_json)
+    assert result["status"] == "deleted"

@@ -114,18 +114,14 @@ class TestRunConversation:
     # This test documents the actual behaviour: unhandled exceptions from dispatch bubble up.
     @patch("integra.core.orchestrator.dispatch_tool", new_callable=AsyncMock)
     @patch("integra.core.orchestrator.anthropic.AsyncAnthropic")
-    async def test_dispatch_exception_propagates(
-        self, mock_client_cls: MagicMock, mock_dispatch: AsyncMock
-    ) -> None:
+    async def test_dispatch_exception_propagates(self, mock_client_cls: MagicMock, mock_dispatch: AsyncMock) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
 
         # Mock dispatch to raise — this simulates an unexpected error in the dispatch layer
         mock_dispatch.side_effect = RuntimeError("handler blew up")
 
-        mock_client.messages.create = AsyncMock(
-            return_value=_make_tool_use_response("notify_user", {"message": "hi"})
-        )
+        mock_client.messages.create = AsyncMock(return_value=_make_tool_use_response("notify_user", {"message": "hi"}))
 
         # The orchestrator does NOT suppress RuntimeError from dispatch_tool;
         # it propagates to the caller.
