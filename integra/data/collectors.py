@@ -11,8 +11,10 @@ from integra.core.config import Settings, settings
 from integra.data.audit import write_audit_entry
 from integra.data.encryption import encrypt_record
 from integra.data.schemas import (
+    DiaryType,
     SubstanceCategory,
     make_addiction_therapy_record,
+    make_diary_record,
     make_dietary_record,
     make_intake_record,
     make_supplement_record,
@@ -149,6 +151,25 @@ async def log_meal(**kwargs: Any) -> str:
     _store_record(record, "dietary", cfg)
     logger.info("Logged meal: %s", meal_type)
     return json.dumps({"status": "logged", "meal_type": meal_type})
+
+
+async def collect_diary(**kwargs: Any) -> str:
+    """Store an on-demand diary entry in the data lake."""
+    cfg: Settings = kwargs.pop("config", None) or settings
+    answers_raw = kwargs.get("answers", {})
+    answers: dict[str, str] = {str(k): str(v) for k, v in answers_raw.items()} if isinstance(answers_raw, dict) else {}
+    qa_pairs = [{"q": k, "a": v} for k, v in answers.items()]
+    record = make_diary_record(
+        diary_type=DiaryType.ON_DEMAND,
+        severity="none",
+        substance=str(answers.get("substance", "")),
+        questions_asked=len(qa_pairs),
+        answers=json.dumps(qa_pairs),
+        penance_credit=0.0,
+    )
+    _store_record(dict(record), "diary", cfg)
+    logger.info("Stored on-demand diary entry (%d Q&As)", len(qa_pairs))
+    return json.dumps({"status": "stored", "questions_asked": len(qa_pairs)})
 
 
 async def query_health_data(**kwargs: Any) -> str:

@@ -50,6 +50,9 @@ graph LR
         L --> M[Stage 3 Live Screen]
         M --> N[Stage 4 Project]
         T[query_stack<br/>GH Issues API]
+        ADV[advisor.py<br/>state machine]
+        AB[app_bridge.py<br/>Toggl/CT/Session/Streaks]
+        ADV --> AB
     end
 
     subgraph "Stage 3 — Health + Habits"
@@ -229,6 +232,107 @@ Tracked daily. All sensitive data encrypted in data lake.
   over quota      = score 0 + coaching flag
 ```
 
+### Advisor State Machine
+
+After daily data collection, advisor.py computes a state that drives coaching tone:
+
+| State | Condition | Advisor Tone |
+|-------|-----------|-------------|
+| `STRUGGLING` | Any quota violation OR 3+ healthy habits missed | Short, supportive, one focus area |
+| `HOLDING` | No violations, 1-2 healthy misses | Balanced, specific improvement target |
+| `THRIVING` | All healthy green + under-quota everywhere | Reinforce streaks, celebrate |
+
+Advisor triggers **after** data is stored in the lake (event-driven). It reads committed data, computes state, then dispatches coaching messages, milestone celebrations, and penance tasks.
+
+### Streak Mechanics (Healthy Habits)
+
+```
+# Streak multiplier (category:healthy only)
+score = (base + bonus) * streak_multiplier
+streak_multiplier = min(1.0 + 0.01 * streak_days, 1.5)
+# Day 1: 1.01x, Day 30: 1.30x, Day 50+: 1.50x cap
+
+# Streak freeze (category:healthy only)
+grace_days_earned    = streak_days // 7    # earn 1 grace per 7 streak days
+grace_days_available = grace_days_earned - grace_days_consumed  # tracked separately
+grace_days_available = min(grace_days_available, 3)  # cap at 3 max banked
+on_miss:
+  if grace_days_available > 0:
+    consume grace → streak preserved, miss logged
+  else:
+    streak resets to 0
+```
+
+### Streak-at-Risk Warnings
+
+```
+# Evening check-in (healthy habits, streak >= 7)
+if habit.streak >= 7 and not habit.completed_today:
+  send: "Your [exercise] streak (day N) is at risk — complete before midnight."
+```
+
+### Milestone Celebrations
+
+```
+# Automated Telegram messages at milestones
+addiction-therapy: 7d, 14d, 30d, 60d, 90d, first quota reduction, zero achieved
+healthy habits:   7d, 30d, 50d (streak cap), 100d
+# Messages must be specific, data-referencing (not generic motivational quotes)
+```
+
+### Graduated Penance (Addiction-Therapy at Zero)
+
+```
+minor    (1 unit over):                         20-min study session
+standard (2-3 units):                           full gym/study session
+escalated (>3 units OR 3rd relapse this week):  gym + study + HIL escalation message
+```
+
+Penance is HIL-gated: Telegram inline keyboard presents options, user selects before GH issue is created. Framed as "rebalancing" (self-investment), not punishment.
+
+### Violation Diary Prompt
+
+On any quota violation or relapse, schedule a diary prompt (Telegram) scaled to severity:
+
+```
+minor:     3 questions  — what happened, what triggered it, one takeaway
+standard:  5 questions  — above + mood assessment + alternative action brainstorm
+escalated: 7 questions  — above + full HALT review + commitment for tomorrow + coping plan
+
+Completing the diary session counts as penance work:
+  minor diary    = 0.5 penance credit (covers minor penance fully)
+  standard diary = 0.5 penance credit (partial — still need physical/study task)
+  escalated diary = 0.3 penance credit (partial — significant task still required)
+```
+
+The diary captures context for Claude's pattern analysis AND serves as accountability work. User reflects instead of just being penalized.
+
+### HALT Trigger Context (Addiction-Therapy)
+
+On each substance intake log, capture:
+1. Hungry? (Y/N)  2. Angry? (Y/N)  3. Lonely? (Y/N)  4. Tired? (Y/N)
+5. Craving intensity (1-10)  6. Situation notes (optional)
+
+Stored as `TriggerContext`. Claude analyzes patterns across events to identify high-risk contexts.
+
+### MI Readiness Ruler (Weekly)
+
+```
+# Per addiction-therapy substance, weekly review
+"On 1-10, how ready are you to reduce [substance] this week?"
+  7-10: reinforce + encourage
+  4-6:  explore ambivalence ("what would make it easier?")
+  1-3:  no pressure, explore support needs
+```
+
+### Weekly Quota Window
+
+```
+# Gaming + porn quotas: ISO week (Mon 00:00 – Sun 23:59 CET)
+# NOT rolling 7 days (prevents double-counting at week boundaries)
+query_week_usage(substance, iso_week) → sum of units this ISO week
+```
+
 ### Stack = Sum Metric
 
 Three granularities, computed per origin, per nature, or combined:
@@ -333,6 +437,9 @@ The actual goal. Two parallel tracks.
 | **2B: User Data Collection** | Collect drugs/supplements/dietary via Telegram bot questionnaire, ingest to data lake, structured as queryable records. Includes scheduled drug/supplement interrogation (4x daily: M/N/A/E + async). User provides supplement/prescription drug list with package photos + purchase links during onboarding interview. **Daily log advisor** (10 rules from toptal KB): sleep/energy/mood assessment, ADHD-aware coaching, IBS/grief/freeze detection, quota tracking. See `tmp/context-from-toptal.md` and `tmp/drugs-tracking-reward-task.md` for full spec. New module: `integra/integrations/advisor.py`. | Stage 1C (Telegram HIL) + Stage 1B (Data Lake) | integra |
 | **2C: Claude Code History** | Reanalyse CC session data after data lake + deps operational. Data already exists: `interviews/toptal/data/claude-history-all.zip.part-a{a,b,c}` (encrypted, split). Scripts exist: `interviews/toptal/scripts/extract_prompts.py` (2098 records), `visualize_prompts.py`. Charts exist: `interviews/toptal/charts/` (9 PNGs). `integra/data/cc_history.py` + `analyze_cc_productivity()` already built. User provides `age` secret key at ingestion time. Cross-reference with drug/supplement schedule from 2B to find productivity correlations. | 2B complete + user provides decryption key | integra |
 
+| **2D: App Integration** | Install + configure macOS/iOS app stack, create `app_bridge.py` with async wrappers, pre-build macOS Shortcuts. Wire to advisor. | Stage 1C (Telegram HIL) | integra |
+| **2E: Expense Pruning** | Ingest 2-month bank/card CSV, filter recurring subscriptions, compare against approved app stack, flag unnecessary spend. | 2D (app stack decided) | user + integra |
+
 **Quality gate**: 75 problems solved, pattern recognition >80% accuracy, all user health data ingested and queryable, claude code history analysis queued.
 
 **Toptal screening stage mapping:**
@@ -353,7 +460,7 @@ Planned at pre-stage level only. Details deferred to PRP generation when Stage 2
 | Track | Scope | Pre-stage PRP needed |
 |-------|-------|---------------------|
 | **3A: Health Data Pipeline** | iOS Health export, YouTube history, chat histories. Encrypted archive already at `interviews/toptal/data/allsecretdata.zip.part-a{a,b,c}` — user provides decryption key. | Yes — data schema + ingestion adapters |
-| **3B: Communication Channels** | Gmail send, WhatsApp (Twilio), SMS (Twilio), email notifications | Yes — channel priority + approval rules |
+| **3B: Communication Channels** | WhatsApp (Twilio), SMS (Twilio), email notifications. Channel ABC (`CommunicationProvider`) already built in Stage 1 — `channels/` package with `TelegramProvider`. WhatsApp deferred to this stage (post-Toptal, after March). | Yes — channel priority + approval rules |
 | **3C: Insight Engine** | Pattern detection in health data, habit correlation, CC history productivity insights (builds on 2C) | Yes — ML/statistical approach + privacy constraints |
 
 **Quality gate**: Defined per-PRP at pre-stage planning time.
@@ -375,6 +482,8 @@ graph TB
     S1C --> S2B
 
     S2B --> S2C[2C: Claude Code History]
+    S1C --> S2D[2D: App Integration]
+    S2D --> S2E[2E: Expense Pruning]
     S2A --> S3[Stage 3: Health & Habits]
     S2B --> S3
 
@@ -389,6 +498,8 @@ graph TB
     style S2B fill:#C925D1,color:#fff,stroke:#A01EA7,stroke-width:1px
     style S2C fill:#C925D1,color:#fff,stroke:#A01EA7,stroke-width:1px
     style SQS fill:#C925D1,color:#fff,stroke:#A01EA7,stroke-width:1px
+    style S2D fill:#C925D1,color:#fff,stroke:#A01EA7,stroke-width:1px
+    style S2E fill:#C925D1,color:#fff,stroke:#A01EA7,stroke-width:1px
     style S3 fill:#8C4FFF,color:#fff,stroke:#703FCC,stroke-width:1px
 ```
 
@@ -418,12 +529,18 @@ integra/
 │   ├── core/
 │   │   ├── orchestrator.py            # Claude agentic loop (async)
 │   │   ├── registry.py                # Tool schemas + dispatch + HIL flags
-│   │   └── config.py                  # Pydantic-settings
+│   │   ├── config.py                  # Pydantic-settings
+│   │   └── time_utils.py             # Timezone-aware checks (work hours, ISO week, cooldown)
 │   ├── integrations/
-│   │   ├── telegram.py                # HIL confirm/notify
+│   │   ├── channels/
+│   │   │   ├── __init__.py            # Re-exports: CommunicationProvider, TelegramProvider, ChannelRouter
+│   │   │   ├── base.py               # ABC + types (Capability, ConfirmationResult, MessageRef)
+│   │   │   ├── router.py             # ChannelRouter with sensitivity dispatch
+│   │   │   └── telegram.py           # TelegramProvider (refactored from integrations/telegram.py)
 │   │   ├── scheduler.py              # Scheduled questionnaires (morning/evening)
-│   │   └── questionnaire.py          # Telegram questionnaire flows
-│   │   # advisor.py                  # Stage 2B: daily log advisor (10 rules) — not yet created
+│   │   ├── questionnaire.py          # Telegram questionnaire flows
+│   │   ├── advisor.py                # Daily log advisor (state machine + 10 rules + milestones + penance)
+│   │   └── app_bridge.py             # macOS/iOS app integration (REST + CLI + Shortcuts)
 │   └── data/
 │       ├── mcp_server.py              # Data MCP gateway
 │       ├── ingestion.py               # Raw → structured pipeline
@@ -437,6 +554,11 @@ integra/
 │   ├── raw/                           # Landing zone (unencrypted, transient)
 │   ├── lake/                          # Encrypted structured storage
 │   └── audit/                         # Access logs
+├── memory/                            # Claude Code auto-loaded context docs
+│   ├── MEMORY.md                     # Index (auto-loaded every session, max 200 lines)
+│   ├── ARCHITECTURE.md               # System diagrams, module map, data flows
+│   ├── concepts.md                   # Domain concepts, scoring, quota mechanics
+│   └── mcp-guide.md                  # MCP server inventory, tool usage patterns
 ├── tmp/                              # .gitignored — working notes, KB imports
 │   ├── context-from-toptal.md        # Stage 2B+ actionable import
 │   └── toptal-interviews-kb-report.md # Full KB assessment
@@ -453,7 +575,10 @@ integra/
     ├── test_scheduler.py
     ├── test_collectors.py
     ├── test_audit.py
-    └── test_youtube.py
+    ├── test_youtube.py
+    ├── test_advisor.py
+    ├── test_time_utils.py
+    └── test_app_bridge.py
 ```
 
 > PRP commands (`/prp-prd`, `/prp-plan`, `/prp-implement`, etc.) provided by the globally-installed `prp-core` plugin — no local files needed.
@@ -486,6 +611,7 @@ integra/
 |------|-------|----------|------------|
 | G0 | Stage 0 | Repo exists, plugins respond, GH Project has columns | Manual verify |
 | G1-code | Stage 1 | `uv run pytest tests/ -v` all pass, `ruff check` clean, `mypy .` clean | Yes |
+| G1-sec | Stage 1 | All 7 security issues fixed (3 CRITICAL + 4 MEDIUM). User auth on callbacks, /chat auth, zip path validation, category validation, file size limits, URL whitelist, sender checks. Security tests pass. | Yes |
 | G1-hil | Stage 1 | Telegram bot sends approval request, user can approve/deny, result propagates | Manual + integration test |
 | G1-data | Stage 1 | `age -d` decrypts test data, MCP `query_data` returns results | Integration test |
 | G2-drill | Stage 2 | 75 problems solved, pattern accuracy >80%, 7/10 Easy under 15 min | User self-report |
@@ -557,3 +683,15 @@ integra/
 | **Origin** | How a task was created: `planned` (roadmap), `user-request` (ad-hoc), `choice` (picked from options). |
 | **Nature** | What kind of task: `job` (scored work) or `reward` (behavior tracking). |
 | **query_stack** | MCP tool that queries GH Issues by label + date range to compute stack scores. |
+| **AdvisorState** | Daily state computed by advisor.py: `struggling`, `holding`, `thriving`. Drives coaching tone. |
+| **HALT** | Trigger context framework: Hungry, Angry, Lonely, Tired. Captured on addiction-therapy intake events. |
+| **Streak multiplier** | Score bonus for healthy habit streaks: `min(1.0 + 0.01 * streak_days, 1.5)`. Cap at 50-day streak. |
+| **Streak freeze** | Grace day preventing streak reset on single miss. Earned 1 per 7 streak days, max 3 banked. Healthy habits only. |
+| **Readiness ruler** | MI-based weekly 1-10 self-assessment per addiction-therapy substance. Drives advisor tone for the week. |
+| **App bridge** | `integrations/app_bridge.py` — async wrappers for macOS/iOS apps (Toggl, Cold Turkey, Session, Streaks, RescueTime, Apple Health). |
+| **Expense pruning** | Periodic CSV audit of bank/card statements to flag unnecessary subscriptions vs. approved app stack. |
+| **Violation diary** | Severity-scaled diary prompt triggered on quota violations. Diary completion counts as partial penance credit (0.3–0.5). |
+| **CommunicationProvider** | ABC for messaging channels. Methods: `send_message`, `ask_confirmation`, `send_selection`. Implemented by `TelegramProvider` (Stage 1), `WhatsAppProvider` (Stage 3B). |
+| **ChannelRouter** | Routes messages to appropriate provider based on sensitivity level and channel capabilities. |
+| **G1-sec** | Security quality gate: 3 CRITICAL + 4 MEDIUM fixes must pass before Stage 1 integration tests. Covers auth, path traversal, input validation. |
+| **memory/** | Claude Code auto-loaded context docs (`~/.claude/projects/.../memory/`). MEMORY.md loaded every session. YAML frontmatter, max 300 lines per doc. |

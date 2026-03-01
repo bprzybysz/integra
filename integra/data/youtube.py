@@ -71,8 +71,25 @@ class VideoExtract:
         return f"{m}m{s}s"
 
 
+_ALLOWED_YOUTUBE_DOMAINS = {"youtube.com", "www.youtube.com", "youtu.be", "m.youtube.com"}
+
+
+def _validate_youtube_url(url: str) -> None:
+    """Validate that a URL points to YouTube. Rejects file://, other schemes, other domains."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        msg = f"Invalid URL scheme '{parsed.scheme}' — only http/https allowed"
+        raise ValueError(msg)
+    if parsed.hostname not in _ALLOWED_YOUTUBE_DOMAINS:
+        msg = f"Invalid domain '{parsed.hostname}' — only YouTube URLs allowed"
+        raise ValueError(msg)
+
+
 def extract_metadata(url: str) -> VideoExtract:
     """Extract video metadata via yt-dlp --dump-json."""
+    _validate_youtube_url(url)
     result = subprocess.run(
         ["uvx", "yt-dlp", "--dump-json", "--skip-download", url],
         capture_output=True,
@@ -100,6 +117,7 @@ def extract_metadata(url: str) -> VideoExtract:
 
 def extract_transcript(url: str, lang: str = "en") -> list[TranscriptSegment]:
     """Extract auto-generated transcript via yt-dlp."""
+    _validate_youtube_url(url)
     with tempfile.TemporaryDirectory() as tmpdir:
         out_path = Path(tmpdir) / "transcript"
         subprocess.run(
@@ -210,15 +228,15 @@ def render_kb_markdown(video: VideoExtract) -> str:
         # No chapters — single section
         lines.append("## Full Transcript")
         lines.append("")
-        para: list[str] = []
+        para_full: list[str] = []
         for seg in video.segments:
-            para.append(seg.text)
-            if len(para) >= 5:
-                lines.append(" ".join(para))
+            para_full.append(seg.text)
+            if len(para_full) >= 5:
+                lines.append(" ".join(para_full))
                 lines.append("")
-                para = []
-        if para:
-            lines.append(" ".join(para))
+                para_full = []
+        if para_full:
+            lines.append(" ".join(para_full))
             lines.append("")
 
     # Placeholder sections for agent to fill

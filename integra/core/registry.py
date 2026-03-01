@@ -209,6 +209,24 @@ TOOL_REGISTRY: dict[str, ToolDef] = {
             },
         },
     },
+    "collect_diary": {
+        "handler": _placeholder_handler,
+        "requires_confirmation": False,
+        "schema": {
+            "name": "collect_diary",
+            "description": "Store an on-demand diary entry in the encrypted data lake.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "answers": {
+                        "type": "object",
+                        "description": "Dict of field_name -> answer strings from diary questionnaire.",
+                    },
+                },
+                "required": ["answers"],
+            },
+        },
+    },
 }
 
 

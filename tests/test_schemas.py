@@ -1,12 +1,20 @@
 """Tests for integra.data.schemas."""
 
+import json
+
 from integra.data.schemas import (
+    AdvisorState,
     FrequencyUnit,
+    PenanceSeverity,
+    RewardCategory,
     SubstanceCategory,
     make_addiction_therapy_record,
+    make_controlled_use_record,
     make_dietary_record,
     make_intake_record,
+    make_penance_record,
     make_supplement_record,
+    make_trigger_context,
 )
 
 
@@ -76,3 +84,127 @@ class TestMakeAddictionTherapyRecord:
     def test_empty_quota_default(self) -> None:
         rec = make_addiction_therapy_record(substance="K", amount="25", unit="mg")
         assert rec["daily_quota"] == ""
+
+    def test_new_fields_defaults(self) -> None:
+        rec = make_addiction_therapy_record(substance="K", amount="1", unit="touch")
+        assert rec["week_number"] == 0
+        assert rec["trigger_context"] == "{}"
+
+    def test_with_trigger_context(self) -> None:
+        ctx = make_trigger_context(halt_lonely=True, craving_intensity=7)
+        rec = make_addiction_therapy_record(
+            substance="3-CMC",
+            amount="50",
+            unit="mg",
+            trigger_context=json.dumps(ctx),
+            week_number=9,
+        )
+        assert rec["week_number"] == 9
+        parsed = json.loads(rec["trigger_context"])
+        assert parsed["halt_lonely"] is True
+        assert parsed["craving_intensity"] == 7
+
+
+class TestRewardCategory:
+    def test_all_categories_exist(self) -> None:
+        assert RewardCategory.HEALTHY.value == "healthy"
+        assert RewardCategory.NEUTRAL.value == "neutral"
+        assert RewardCategory.QUOTA.value == "quota"
+        assert RewardCategory.ADDICTION_THERAPY.value == "addiction-therapy"
+        assert RewardCategory.CONTROLLED_USE.value == "controlled-use"
+
+    def test_controlled_use_in_substance_category(self) -> None:
+        assert SubstanceCategory.CONTROLLED_USE.value == "controlled-use"
+
+
+class TestMakeControlledUseRecord:
+    def test_creates_with_defaults(self) -> None:
+        rec = make_controlled_use_record(substance="BCD", amount="3", unit="clouds")
+        assert rec["substance"] == "BCD"
+        assert rec["cooldown_hours"] == "2"
+        assert rec["work_hours_blocked"] is True
+        assert rec["timestamp"] != ""
+
+    def test_explicit_values(self) -> None:
+        rec = make_controlled_use_record(
+            substance="BCD",
+            amount="5",
+            unit="clouds",
+            daily_ceiling="10",
+            cooldown_hours="3",
+            work_hours_blocked=False,
+            notes="evening use",
+            timestamp="2026-03-01T20:00:00+01:00",
+        )
+        assert rec["daily_ceiling"] == "10"
+        assert rec["cooldown_hours"] == "3"
+        assert rec["work_hours_blocked"] is False
+        assert rec["timestamp"] == "2026-03-01T20:00:00+01:00"
+
+    def test_empty_ceiling_default(self) -> None:
+        rec = make_controlled_use_record(substance="BCD", amount="1", unit="clouds")
+        assert rec["daily_ceiling"] == ""
+
+
+class TestAdvisorState:
+    def test_all_states(self) -> None:
+        assert AdvisorState.STRUGGLING.value == "struggling"
+        assert AdvisorState.HOLDING.value == "holding"
+        assert AdvisorState.THRIVING.value == "thriving"
+
+
+class TestPenanceSeverity:
+    def test_all_severities(self) -> None:
+        assert PenanceSeverity.MINOR.value == "minor"
+        assert PenanceSeverity.STANDARD.value == "standard"
+        assert PenanceSeverity.ESCALATED.value == "escalated"
+
+
+class TestMakeTriggerContext:
+    def test_defaults(self) -> None:
+        ctx = make_trigger_context()
+        assert ctx["halt_hungry"] is False
+        assert ctx["halt_angry"] is False
+        assert ctx["halt_lonely"] is False
+        assert ctx["halt_tired"] is False
+        assert ctx["craving_intensity"] == 0
+        assert ctx["situation_notes"] == ""
+
+    def test_halt_flags(self) -> None:
+        ctx = make_trigger_context(halt_hungry=True, halt_tired=True, craving_intensity=8)
+        assert ctx["halt_hungry"] is True
+        assert ctx["halt_tired"] is True
+        assert ctx["craving_intensity"] == 8
+
+    def test_with_situation_notes(self) -> None:
+        ctx = make_trigger_context(situation_notes="late night, alone")
+        assert ctx["situation_notes"] == "late night, alone"
+
+
+class TestMakePenanceRecord:
+    def test_creates_with_defaults(self) -> None:
+        rec = make_penance_record(substance="3-CMC", relapse_amount="50mg")
+        assert rec["substance"] == "3-CMC"
+        assert rec["penance_severity"] == "minor"
+        assert rec["penance_gh_issue_id"] == ""
+        assert rec["penance_completed"] is False
+        assert rec["penance_completed_at"] == ""
+        assert rec["relapse_timestamp"] != ""
+
+    def test_escalated_severity(self) -> None:
+        rec = make_penance_record(
+            substance="K",
+            relapse_amount="5 touches",
+            penance_severity=PenanceSeverity.ESCALATED,
+            penance_description="gym + 1h study block",
+        )
+        assert rec["penance_severity"] == "escalated"
+        assert rec["penance_description"] == "gym + 1h study block"
+
+    def test_explicit_timestamp(self) -> None:
+        rec = make_penance_record(
+            substance="THC",
+            relapse_amount="3 clouds",
+            relapse_timestamp="2026-03-01T22:00:00+01:00",
+        )
+        assert rec["relapse_timestamp"] == "2026-03-01T22:00:00+01:00"

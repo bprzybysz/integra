@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     timezone: str = "Europe/Warsaw"
     locale: str = "pl-PL"
 
+    # API Security
+    chat_api_key: str = ""
+
     # App
     app_host: str = "0.0.0.0"
     app_port: int = 8000

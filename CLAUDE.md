@@ -49,17 +49,26 @@ uv run pytest tests/ -v            # test
 
 ```
 integra/
-├── app.py              # FastAPI entrypoint, Telegram lifespan
+├── app.py                        # FastAPI entrypoint, lifespan wiring
 ├── core/
-│   ├── orchestrator.py # Claude agentic loop (async, max 15 tool rounds)
-│   ├── registry.py     # Tool schemas + dispatch map + HIL flags
-│   └── config.py       # Pydantic-settings from .env
+│   ├── orchestrator.py           # Claude agentic loop (async, max 15 tool rounds)
+│   ├── registry.py               # Tool schemas + dispatch map + HIL flags
+│   └── config.py                 # Pydantic-settings from .env
 ├── integrations/
-│   └── telegram.py     # HIL confirm/notify via Telegram inline keyboard
+│   ├── channels/
+│   │   ├── base.py               # CommunicationProvider ABC, Capability, Sensitivity
+│   │   ├── router.py             # ChannelRouter (sensitivity-based dispatch)
+│   │   └── telegram.py           # TelegramProvider + /diary, /task commands
+│   ├── questionnaire.py          # Question/Questionnaire dataclasses + run_questionnaire
+│   ├── questionnaire_ui.py       # QuestionnaireUI Protocol
+│   ├── telegram_questionnaire_ui.py  # TelegramQuestionnaireUI implementation
+│   └── scheduler.py              # Scheduled + on-demand questionnaires, task interrupt
 └── data/
-    ├── mcp_server.py   # Data MCP gateway (decrypt-on-read, audit, filtering)
-    ├── ingestion.py    # Raw → structured pipeline
-    └── encryption.py   # age encrypt/decrypt helpers
+    ├── mcp_server.py             # Data MCP gateway (decrypt-on-read, audit, filtering)
+    ├── ingestion.py              # Raw → structured pipeline (DataParser registry)
+    ├── collectors.py             # Health data + diary collection handlers
+    ├── schemas.py                # TypedDicts + factory functions
+    └── encryption.py             # age encrypt/decrypt helpers
 ```
 
 ## Tool Registry Pattern

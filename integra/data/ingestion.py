@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,6 +16,8 @@ from integra.data.audit import write_audit_entry
 from integra.data.encryption import encrypt_record
 
 logger = logging.getLogger(__name__)
+
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB per file
 
 
 @dataclass
@@ -45,15 +48,27 @@ def _parse_csv_file(path: Path) -> list[dict[str, Any]]:
         return [dict(row) for row in reader]
 
 
+DataParser = Callable[[Path], list[dict[str, Any]]]
+
+_PARSERS: dict[str, DataParser] = {
+    ".json": _parse_json_file,
+    ".csv": _parse_csv_file,
+}
+
+
+def register_parser(suffix: str, parser: DataParser) -> None:
+    """Register a new file parser for a given suffix."""
+    _PARSERS[suffix.lower()] = parser
+
+
 def _parse_file(path: Path) -> list[dict[str, Any]]:
     """Dispatch to the right parser based on suffix."""
     suffix = path.suffix.lower()
-    if suffix == ".json":
-        return _parse_json_file(path)
-    if suffix == ".csv":
-        return _parse_csv_file(path)
-    msg = f"Unsupported file type: {suffix}"
-    raise ValueError(msg)
+    parser = _PARSERS.get(suffix)
+    if parser is None:
+        msg = f"Unsupported file type: {suffix}"
+        raise ValueError(msg)
+    return parser(path)
 
 
 def _determine_category(file_path: Path, raw_root: Path) -> str:
@@ -86,6 +101,14 @@ async def ingest_from_landing_zone(config: Settings) -> IngestResult:
 
     for file_path in files:
         try:
+            # Security: enforce file size limit before parsing
+            file_size = file_path.stat().st_size
+            if file_size > MAX_FILE_SIZE:
+                error_msg = f"File too large ({file_size} bytes, max {MAX_FILE_SIZE}): {file_path}"
+                logger.warning(error_msg)
+                result.errors.append(error_msg)
+                continue
+
             records = _parse_file(file_path)
             category = _determine_category(file_path, raw_root)
             ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")

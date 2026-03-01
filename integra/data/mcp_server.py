@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -33,6 +34,9 @@ async def ingest_data(config: Settings | None = None, **kwargs: Any) -> str:
     )
 
 
+_SAFE_CATEGORY_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
 async def query_data(
     category: str,
     filters: dict[str, Any] | None = None,
@@ -41,6 +45,12 @@ async def query_data(
 ) -> str:
     """Decrypt and query lake files in a category. Returns JSON array of matching records."""
     cfg = config or settings
+
+    # Security: validate category name to prevent path traversal
+    if not _SAFE_CATEGORY_RE.match(category):
+        logger.warning("Invalid category name rejected: %s", category)
+        return json.dumps({"error": "Invalid category name"})
+
     lake_dir = cfg.data_lake_path / category
     audit_file = cfg.data_audit_path / "query.jsonl"
 

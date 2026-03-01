@@ -21,11 +21,19 @@ async def test_health() -> None:
 
 @pytest.mark.asyncio
 async def test_chat_returns_response() -> None:
-    with patch("integra.app.run_conversation", new_callable=AsyncMock) as mock_run:
+    with (
+        patch("integra.app.settings") as mock_settings,
+        patch("integra.app.run_conversation", new_callable=AsyncMock) as mock_run,
+    ):
+        mock_settings.chat_api_key = "test-key"
         mock_run.return_value = "Hello from Claude"
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/chat", json={"message": "Hi"})
+            resp = await client.post(
+                "/chat",
+                json={"message": "Hi"},
+                headers={"Authorization": "Bearer test-key"},
+            )
     assert resp.status_code == 200
     assert resp.json() == {"response": "Hello from Claude"}
     mock_run.assert_awaited_once()
@@ -33,7 +41,13 @@ async def test_chat_returns_response() -> None:
 
 @pytest.mark.asyncio
 async def test_chat_missing_message() -> None:
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.post("/chat", json={})
+    with patch("integra.app.settings") as mock_settings:
+        mock_settings.chat_api_key = "test-key"
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/chat",
+                json={},
+                headers={"Authorization": "Bearer test-key"},
+            )
     assert resp.status_code == 422

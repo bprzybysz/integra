@@ -6,7 +6,9 @@ from datetime import time
 from unittest.mock import AsyncMock, patch
 
 from integra.integrations.scheduler import (
+    _ANSWER_HANDLERS,
     MORNING_SUPPLEMENT_CHECK,
+    ON_DEMAND_DIARY,
     ScheduleEntry,
     Scheduler,
     _process_answers,
@@ -70,9 +72,31 @@ class TestScheduler:
         )
         scheduler = Scheduler(schedules=[entry])
 
-        with patch("integra.integrations.scheduler.collect_supplement_stack", new_callable=AsyncMock) as mock_collect:
+        mock_ui = AsyncMock()
+        with (
+            patch("integra.integrations.scheduler._questionnaire_ui", mock_ui),
+            patch(
+                "integra.integrations.scheduler.collect_supplement_stack",
+                new_callable=AsyncMock,
+            ) as mock_collect,
+        ):
             mock_collect.return_value = '{"status": "stored"}'
             result = await scheduler.trigger_now("test_check")
 
         assert result is not None
         assert result["taken"] == "Yes - all"
+
+
+class TestOnDemandDiary:
+    def test_on_demand_diary_questionnaire_defined(self) -> None:
+        assert len(ON_DEMAND_DIARY.questions) == 4
+        field_names = {q.field_name for q in ON_DEMAND_DIARY.questions}
+        assert field_names == {"content", "mood", "substance", "notes"}
+
+    async def test_interrupt_current_no_active(self) -> None:
+        scheduler = Scheduler(schedules=[])
+        result = await scheduler.interrupt_current()
+        assert result is False
+
+    def test_diary_handler_registered(self) -> None:
+        assert "diary_entry" in _ANSWER_HANDLERS

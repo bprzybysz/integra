@@ -33,14 +33,48 @@ def _extract_prompts_from_jsonl(content: str) -> list[dict[str, Any]]:
     return records
 
 
+MAX_ZIP_MEMBER_SIZE = 100 * 1024 * 1024  # 100 MB per member
+MAX_ZIP_TOTAL_SIZE = 500 * 1024 * 1024  # 500 MB total extracted
+
+
+def _is_safe_zip_path(member_name: str) -> bool:
+    """Reject zip members with path traversal components."""
+    from pathlib import PurePosixPath
+
+    p = PurePosixPath(member_name)
+    return ".." not in p.parts and not p.is_absolute()
+
+
 def _extract_from_archive(archive_path: Path) -> list[dict[str, Any]]:
-    """Extract prompt records from a zip archive containing JSONL/JSON files."""
+    """Extract prompt records from a zip archive containing JSONL/JSON files.
+
+    Security: validates member paths against traversal and enforces size limits.
+    """
     all_records: list[dict[str, Any]] = []
+    total_extracted = 0
 
     with zipfile.ZipFile(archive_path, "r") as zf:
-        for name in zf.namelist():
+        for info in zf.infolist():
+            name = info.filename
             if name.endswith("/"):
                 continue
+
+            # Security: reject path traversal
+            if not _is_safe_zip_path(name):
+                logger.warning("Skipping unsafe zip member path: %s", name)
+                continue
+
+            # Security: enforce per-member size limit
+            if info.file_size > MAX_ZIP_MEMBER_SIZE:
+                logger.warning("Skipping oversized zip member %s (%d bytes)", name, info.file_size)
+                continue
+
+            # Security: enforce total extracted size limit
+            total_extracted += info.file_size
+            if total_extracted > MAX_ZIP_TOTAL_SIZE:
+                logger.warning("Total extracted size exceeds limit, stopping extraction")
+                break
+
             try:
                 content = zf.read(name).decode("utf-8", errors="replace")
                 if name.endswith(".jsonl"):
