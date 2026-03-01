@@ -1,0 +1,140 @@
+{
+  "mcpServers": {
+    "github-filtered": {
+      "command": "mcp-filter",
+      "args": [
+        "run",
+        "-t",
+        "stdio",
+        "--stdio-command",
+        "npx",
+        "--stdio-arg",
+        "-y @modelcontextprotocol/server-github",
+        "-a",
+        "create_issue,list_issues,update_issue,get_issue,add_issue_comment,search_issues,create_pull_request,get_pull_request,list_pull_requests,list_commits"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "$GITHUB_PERSONAL_ACCESS_TOKEN"
+      }
+    },
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp@latest"
+      ],
+      "env": {
+        "DEFAULT_MINIMUM_TOKENS": "10000"
+      }
+    },
+    "git-filtered": {
+      "command": "mcp-filter",
+      "args": [
+        "run",
+        "-t",
+        "stdio",
+        "--stdio-command",
+        "uvx",
+        "--stdio-arg",
+        "mcp-server-git",
+        "-a",
+        "git_status,git_diff,git_log,git_commit,git_add,git_diff_staged"
+      ]
+    },
+    "serena": {
+      "command": "uvx",
+      "args": [
+        "serena",
+        "--workspace",
+        "."
+      ],
+      "disabled": true,
+      "_note": "Enable when serena is installed: uv tool install serena"
+    },
+    "crawl4ai-rag": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "-e",
+        "TRANSPORT=stdio",
+        "-e",
+        "OPENAI_API_KEY",
+        "-e",
+        "SUPABASE_URL",
+        "-e",
+        "SUPABASE_SERVICE_KEY",
+        "coleam00/crawl4ai-rag:latest"
+      ],
+      "env": {
+        "OPENAI_API_KEY": "$OPENAI_API_KEY",
+        "SUPABASE_URL": "$SUPABASE_URL",
+        "SUPABASE_SERVICE_KEY": "$SUPABASE_SERVICE_KEY"
+      },
+      "disabled": true,
+      "_note": "Cole Medin's Crawl4AI RAG — web crawling + vector search. Needs Docker + Supabase."
+    },
+    "notion-filtered": {
+      "command": "mcp-filter",
+      "args": [
+        "run",
+        "-t",
+        "stdio",
+        "--stdio-command",
+        "npx",
+        "--stdio-arg",
+        "-y @notionhq/notion-mcp-server",
+        "--allow-patterns",
+        ".*search.*|.*page.*|.*block.*",
+        "-d",
+        ".*delete.*"
+      ],
+      "env": {
+        "OPENAPI_MCP_HEADERS": "{\"Authorization\": \"Bearer $NOTION_API_TOKEN\", \"Notion-Version\": \"2022-06-28\"}"
+      },
+      "disabled": true,
+      "_note": "Enable after setting NOTION_API_TOKEN"
+    },
+    "browserbase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@browserbasehq/mcp-browserbase"
+      ],
+      "env": {
+        "BROWSERBASE_API_KEY": "$BROWSERBASE_API_KEY",
+        "BROWSERBASE_PROJECT_ID": "$BROWSERBASE_PROJECT_ID"
+      },
+      "disabled": true,
+      "_note": "Stagehand-powered browser automation. Get keys at browserbase.com"
+    },
+    "openbrowser": {
+      "command": "uvx",
+      "args": [
+        "openbrowser-ai[mcp]",
+        "--mcp"
+      ],
+      "env": {
+        "OPENBROWSER_HEADLESS": "true"
+      },
+      "_note": "OpenBrowser AI — single-tool CDP browser automation, 3x more token-efficient than Playwright MCP"
+    },
+    "filesystem-filtered": {
+      "command": "mcp-filter",
+      "args": [
+        "run",
+        "-t",
+        "stdio",
+        "--stdio-command",
+        "npx",
+        "--stdio-arg",
+        "-y @modelcontextprotocol/server-filesystem .",
+        "-a",
+        "read_file,read_text_file,list_directory,search_files,get_file_info"
+      ],
+      "disabled": true,
+      "_note": "Enable if Claude built-in Read/Glob insufficient"
+    }
+  }
+}
