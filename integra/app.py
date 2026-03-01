@@ -98,10 +98,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from integra.integrations.scheduler import (
             ON_DEMAND_DIARY,
             _process_answers,
+            set_advisor_router,
             set_questionnaire_ui,
         )
 
         set_questionnaire_ui(_questionnaire_ui)
+        set_advisor_router(_router)
 
         async def _diary_entry_callback() -> None:
             if _questionnaire_ui is None:

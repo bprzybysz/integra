@@ -98,28 +98,29 @@ class AddictionTherapyRecord(TypedDict):
 
 
 class ControlledUseRecord(TypedDict):
-    """Controlled-use substance tracking (stable ceiling + time rules)."""
+    """Controlled-use substance tracking with violation flags."""
 
-    substance: str  # e.g. "BCD"
+    substance: str
     amount: str
     unit: str
     timestamp: str  # ISO 8601
-    daily_ceiling: str  # stable max per day (no decay)
-    cooldown_hours: str  # min gap between uses
-    work_hours_blocked: bool  # True = blocked 09-17 CET
-    ruliade: str  # NL time rule for agent (e.g. "not during work hours, 2h cooldown")
-    notes: str
+    work_hours_violation: bool  # used during 09:00-17:00 in user timezone
+    cooldown_violation: bool  # used before cooldown elapsed
+    daily_ceiling_exceeded: bool
+    ruliade: str  # NL rules string for agent interpretation
 
 
 class TriggerContext(TypedDict):
     """HALT trigger context for addiction-therapy intake events."""
 
-    halt_hungry: bool
-    halt_angry: bool
-    halt_lonely: bool
-    halt_tired: bool
+    hungry: bool
+    angry: bool
+    lonely: bool
+    tired: bool
     craving_intensity: int  # 1-10
     situation_notes: str
+    substance: str
+    timestamp: str  # ISO 8601
 
 
 class PenanceRecord(TypedDict):
@@ -187,6 +188,19 @@ class DiaryRecord(TypedDict):
     timestamp: str  # ISO 8601
 
 
+class StreakState(TypedDict):
+    """Derived streak state for a healthy habit."""
+
+    habit: str
+    streak_days: int
+    multiplier: float  # min(1.0 + 0.01 * streak_days, 1.5)
+    grace_total_earned: int  # streak_days // 7
+    grace_consumed: int  # tracked in lake records
+    grace_available: int  # min(grace_total_earned - grace_consumed, 3)
+    at_risk: bool  # streak >= 7 and not completed today
+    milestone_hit: int | None  # 7, 30, 50, 100 or None
+
+
 class DailyLogSummary(TypedDict):
     """Advisor's daily assessment output."""
 
@@ -201,28 +215,40 @@ class DailyLogSummary(TypedDict):
     coaching_message: str
 
 
+class QuotaState(TypedDict):
+    """Computed quota state for an addiction-therapy substance."""
+
+    substance: str
+    week_n: int  # weeks since tracking started (0-indexed)
+    quota_week_0: float  # initial weekly quota
+    decay_factor: float  # e.g. 0.9
+    current_quota: float  # quota_week_0 * decay_factor^week_n
+    units_used: float  # this week's total
+    status: str  # "under" | "at" | "over" | "zero_relapse"
+    coaching_flag: bool
+    penance_triggered: bool
+
+
 def make_controlled_use_record(
     substance: str,
     amount: str,
     unit: str,
-    daily_ceiling: str = "",
-    cooldown_hours: str = "2",
-    work_hours_blocked: bool = True,
+    work_hours_violation: bool = False,
+    cooldown_violation: bool = False,
+    daily_ceiling_exceeded: bool = False,
     ruliade: str = "",
-    notes: str = "",
     timestamp: str | None = None,
 ) -> ControlledUseRecord:
-    """Create a controlled-use intake record."""
+    """Create a controlled-use intake record with violation flags."""
     return ControlledUseRecord(
         substance=substance,
         amount=amount,
         unit=unit,
         timestamp=timestamp or datetime.now().astimezone().isoformat(),
-        daily_ceiling=daily_ceiling,
-        cooldown_hours=cooldown_hours,
-        work_hours_blocked=work_hours_blocked,
+        work_hours_violation=work_hours_violation,
+        cooldown_violation=cooldown_violation,
+        daily_ceiling_exceeded=daily_ceiling_exceeded,
         ruliade=ruliade,
-        notes=notes,
     )
 
 
@@ -307,21 +333,25 @@ def make_addiction_therapy_record(
 
 
 def make_trigger_context(
-    halt_hungry: bool = False,
-    halt_angry: bool = False,
-    halt_lonely: bool = False,
-    halt_tired: bool = False,
+    hungry: bool = False,
+    angry: bool = False,
+    lonely: bool = False,
+    tired: bool = False,
     craving_intensity: int = 0,
     situation_notes: str = "",
+    substance: str = "",
+    timestamp: str | None = None,
 ) -> TriggerContext:
     """Create a HALT trigger context for substance intake."""
     return TriggerContext(
-        halt_hungry=halt_hungry,
-        halt_angry=halt_angry,
-        halt_lonely=halt_lonely,
-        halt_tired=halt_tired,
+        hungry=hungry,
+        angry=angry,
+        lonely=lonely,
+        tired=tired,
         craving_intensity=craving_intensity,
         situation_notes=situation_notes,
+        substance=substance,
+        timestamp=timestamp or datetime.now().astimezone().isoformat(),
     )
 
 

@@ -24,11 +24,20 @@ logger = logging.getLogger(__name__)
 # Module-level UI instance — set from app.py after provider init
 _questionnaire_ui: QuestionnaireUI | None = None
 
+# Module-level router for advisor dispatch — set from app.py after provider init
+_advisor_router: object | None = None  # ChannelRouter, typed as object to avoid circular import
+
 
 def set_questionnaire_ui(ui: QuestionnaireUI) -> None:
     """Set the questionnaire UI instance (called from app lifespan)."""
     global _questionnaire_ui  # noqa: PLW0603
     _questionnaire_ui = ui
+
+
+def set_advisor_router(router: object) -> None:
+    """Set the ChannelRouter for advisor dispatch (called from app lifespan)."""
+    global _advisor_router  # noqa: PLW0603
+    _advisor_router = router
 
 
 @dataclass
@@ -176,19 +185,31 @@ async def _handle_intake_log(answers: dict[str, str]) -> None:
     if not substance or substance.lower() in ("none", "no", "n/a"):
         logger.info("No intake reported for evening log.")
         return
+    category = answers.get("category", "supplement")
     await log_drug_intake(
         substance=substance,
         amount=answers.get("amount", "0"),
         unit=answers.get("unit", "mg"),
-        category=answers.get("category", "supplement"),
+        category=category,
     )
+    if category == "addiction-therapy" and _questionnaire_ui is not None:
+        from integra.integrations.halt import run_halt_check
+
+        await run_halt_check(substance=substance, ui=_questionnaire_ui, config=settings)
 
 
 async def _handle_diary_entry(answers: dict[str, str]) -> None:
-    """Store on-demand diary answers in the data lake."""
+    """Store on-demand diary answers in the data lake, then run advisor."""
     from integra.data.collectors import collect_diary
 
     await collect_diary(answers=answers)
+
+    if _advisor_router is not None:
+        from integra.integrations.advisor import run_advisor
+        from integra.integrations.channels.router import ChannelRouter
+
+        if isinstance(_advisor_router, ChannelRouter):
+            await run_advisor(answers, _advisor_router, settings)
 
 
 _ANSWER_HANDLERS: dict[str, AnswerHandler] = {

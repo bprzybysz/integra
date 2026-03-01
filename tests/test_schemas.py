@@ -91,7 +91,7 @@ class TestMakeAddictionTherapyRecord:
         assert rec["trigger_context"] == "{}"
 
     def test_with_trigger_context(self) -> None:
-        ctx = make_trigger_context(halt_lonely=True, craving_intensity=7)
+        ctx = make_trigger_context(lonely=True, craving_intensity=7)
         rec = make_addiction_therapy_record(
             substance="3-CMC",
             amount="50",
@@ -101,7 +101,7 @@ class TestMakeAddictionTherapyRecord:
         )
         assert rec["week_number"] == 9
         parsed = json.loads(rec["trigger_context"])
-        assert parsed["halt_lonely"] is True
+        assert parsed["lonely"] is True
         assert parsed["craving_intensity"] == 7
 
 
@@ -121,8 +121,9 @@ class TestMakeControlledUseRecord:
     def test_creates_with_defaults(self) -> None:
         rec = make_controlled_use_record(substance="BCD", amount="3", unit="clouds")
         assert rec["substance"] == "BCD"
-        assert rec["cooldown_hours"] == "2"
-        assert rec["work_hours_blocked"] is True
+        assert rec["work_hours_violation"] is False
+        assert rec["cooldown_violation"] is False
+        assert rec["daily_ceiling_exceeded"] is False
         assert rec["timestamp"] != ""
 
     def test_explicit_values(self) -> None:
@@ -130,20 +131,21 @@ class TestMakeControlledUseRecord:
             substance="BCD",
             amount="5",
             unit="clouds",
-            daily_ceiling="10",
-            cooldown_hours="3",
-            work_hours_blocked=False,
-            notes="evening use",
+            work_hours_violation=True,
+            cooldown_violation=True,
+            daily_ceiling_exceeded=True,
+            ruliade="not during work hours",
             timestamp="2026-03-01T20:00:00+01:00",
         )
-        assert rec["daily_ceiling"] == "10"
-        assert rec["cooldown_hours"] == "3"
-        assert rec["work_hours_blocked"] is False
+        assert rec["work_hours_violation"] is True
+        assert rec["cooldown_violation"] is True
+        assert rec["daily_ceiling_exceeded"] is True
         assert rec["timestamp"] == "2026-03-01T20:00:00+01:00"
 
-    def test_empty_ceiling_default(self) -> None:
+    def test_no_violations_default(self) -> None:
         rec = make_controlled_use_record(substance="BCD", amount="1", unit="clouds")
-        assert rec["daily_ceiling"] == ""
+        assert rec["work_hours_violation"] is False
+        assert rec["daily_ceiling_exceeded"] is False
 
 
 class TestAdvisorState:
@@ -163,22 +165,33 @@ class TestPenanceSeverity:
 class TestMakeTriggerContext:
     def test_defaults(self) -> None:
         ctx = make_trigger_context()
-        assert ctx["halt_hungry"] is False
-        assert ctx["halt_angry"] is False
-        assert ctx["halt_lonely"] is False
-        assert ctx["halt_tired"] is False
+        assert ctx["hungry"] is False
+        assert ctx["angry"] is False
+        assert ctx["lonely"] is False
+        assert ctx["tired"] is False
         assert ctx["craving_intensity"] == 0
         assert ctx["situation_notes"] == ""
+        assert ctx["substance"] == ""
+        assert ctx["timestamp"] != ""
 
     def test_halt_flags(self) -> None:
-        ctx = make_trigger_context(halt_hungry=True, halt_tired=True, craving_intensity=8)
-        assert ctx["halt_hungry"] is True
-        assert ctx["halt_tired"] is True
+        ctx = make_trigger_context(hungry=True, tired=True, craving_intensity=8)
+        assert ctx["hungry"] is True
+        assert ctx["tired"] is True
         assert ctx["craving_intensity"] == 8
 
     def test_with_situation_notes(self) -> None:
         ctx = make_trigger_context(situation_notes="late night, alone")
         assert ctx["situation_notes"] == "late night, alone"
+
+    def test_explicit_timestamp(self) -> None:
+        ts = "2026-03-01T20:00:00+01:00"
+        ctx = make_trigger_context(timestamp=ts)
+        assert ctx["timestamp"] == ts
+
+    def test_substance_field(self) -> None:
+        ctx = make_trigger_context(substance="3-CMC")
+        assert ctx["substance"] == "3-CMC"
 
 
 class TestMakePenanceRecord:

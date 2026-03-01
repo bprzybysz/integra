@@ -11,6 +11,7 @@ from integra.core.config import Settings, settings
 from integra.data.audit import write_audit_entry
 from integra.data.encryption import encrypt_record
 from integra.data.schemas import (
+    ControlledUseRecord,
     DiaryType,
     SubstanceCategory,
     make_addiction_therapy_record,
@@ -109,18 +110,75 @@ async def log_drug_intake(**kwargs: Any) -> str:
             )
         )
         _store_record(record, "intake", cfg)
-    else:
-        record = dict(
-            make_intake_record(
-                substance=substance,
-                amount=amount,
-                unit=unit,
-                category=category,
-                notes=notes,
-                timestamp=str(timestamp) if timestamp else None,
-            )
+        logger.info("Logged intake: %s %s%s", substance, amount, unit)
+        return json.dumps({"status": "logged", "substance": substance, "amount": amount})
+
+    if category == SubstanceCategory.CONTROLLED_USE:
+        from integra.data.controlled_use import evaluate_controlled_use
+        from integra.data.mcp_server import query_data
+
+        # Fetch recent records for this substance to evaluate rules
+        raw_recent = await query_data(
+            category="intake",
+            filters={"substance": substance},
+            config=cfg,
         )
-        _store_record(record, "intake", cfg)
+        try:
+            raw_list: list[dict[str, Any]] = json.loads(raw_recent)
+        except (json.JSONDecodeError, ValueError):
+            raw_list = []
+
+        recent_records: list[ControlledUseRecord] = [
+            ControlledUseRecord(
+                substance=str(r.get("substance", "")),
+                amount=str(r.get("amount", "")),
+                unit=str(r.get("unit", "")),
+                timestamp=str(r.get("timestamp", "")),
+                work_hours_violation=bool(r.get("work_hours_violation", False)),
+                cooldown_violation=bool(r.get("cooldown_violation", False)),
+                daily_ceiling_exceeded=bool(r.get("daily_ceiling_exceeded", False)),
+                ruliade=str(r.get("ruliade", "")),
+            )
+            for r in raw_list
+            if isinstance(r, dict)
+        ]
+
+        ts_dt = datetime.fromisoformat(str(timestamp)) if timestamp else datetime.now().astimezone()
+        cu_record, coaching_needed, coaching_message = evaluate_controlled_use(
+            substance=substance,
+            amount=amount,
+            unit=unit,
+            timestamp=ts_dt,
+            recent_records=recent_records,
+            timezone_str=cfg.timezone,
+        )
+        _store_record(dict(cu_record), "intake", cfg)
+
+        violations: list[str] = []
+        if cu_record["work_hours_violation"]:
+            violations.append("work_hours_violation")
+        if cu_record["cooldown_violation"]:
+            violations.append("cooldown_violation")
+        if cu_record["daily_ceiling_exceeded"]:
+            violations.append("daily_ceiling_exceeded")
+
+        if coaching_needed and coaching_message:
+            logger.warning("Controlled-use coaching needed: %s", coaching_message)
+
+        logger.info("Logged controlled-use intake: %s %s%s", substance, amount, unit)
+        return json.dumps({"status": "logged", "violations": violations})
+
+    record = dict(
+        make_intake_record(
+            substance=substance,
+            amount=amount,
+            unit=unit,
+            category=category,
+            notes=notes,
+            timestamp=str(timestamp) if timestamp else None,
+        )
+    )
+    _store_record(record, "intake", cfg)
 
     logger.info("Logged intake: %s %s%s", substance, amount, unit)
     return json.dumps({"status": "logged", "substance": substance, "amount": amount})

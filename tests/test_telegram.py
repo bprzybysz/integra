@@ -11,6 +11,8 @@ import pytest
 from integra.integrations.channels.telegram import (
     TelegramProvider,
     _handle_diary_command,
+    _handle_help_command,
+    _handle_start_command,
     _handle_task_command,
     _pending,
     set_diary_callback,
@@ -253,3 +255,41 @@ async def test_task_command_no_args() -> None:
             await _handle_task_command(update, context)
 
     update.message.reply_text.assert_awaited_once_with("Usage: /task <schedule_name>")
+
+
+@pytest.mark.asyncio
+async def test_start_command_authorized() -> None:
+    with patch("integra.core.config.settings") as mock_settings:
+        mock_settings.telegram_admin_chat_id = 12345
+        update, context = _make_update(user_id=12345)
+        with patch("integra.integrations.channels.telegram.settings", mock_settings):
+            await _handle_start_command(update, context)
+
+    update.message.reply_text.assert_awaited_once()
+    call_text = update.message.reply_text.call_args[0][0]
+    assert "Integra" in call_text
+
+
+@pytest.mark.asyncio
+async def test_start_command_unauthorized() -> None:
+    with patch("integra.core.config.settings") as mock_settings:
+        mock_settings.telegram_admin_chat_id = 12345
+        update, context = _make_update(user_id=99999)
+        with patch("integra.integrations.channels.telegram.settings", mock_settings):
+            await _handle_start_command(update, context)
+
+    update.message.reply_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_help_command_lists_commands() -> None:
+    with patch("integra.core.config.settings") as mock_settings:
+        mock_settings.telegram_admin_chat_id = 12345
+        update, context = _make_update(user_id=12345)
+        with patch("integra.integrations.channels.telegram.settings", mock_settings):
+            await _handle_help_command(update, context)
+
+    update.message.reply_text.assert_awaited_once()
+    call_text = update.message.reply_text.call_args[0][0]
+    assert "/diary" in call_text
+    assert "/task" in call_text

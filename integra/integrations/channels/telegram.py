@@ -258,9 +258,43 @@ async def _handle_task_command(update: Update, context: ContextTypes.DEFAULT_TYP
     task.add_done_callback(_background_tasks.discard)
 
 
+async def _handle_start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /start — welcome message. Admin only."""
+    if update.message is None or update.message.from_user is None:
+        return
+    if update.message.from_user.id != settings.telegram_admin_chat_id:
+        return
+    await update.message.reply_text(
+        "👋 *Integra* is running.\n\n"
+        "I collect health data, track habits, and provide ADHD-aware coaching.\n\n"
+        "Use /help to see available commands.",
+        parse_mode="Markdown",
+    )
+
+
+async def _handle_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /help — list available commands. Admin only."""
+    if update.message is None or update.message.from_user is None:
+        return
+    if update.message.from_user.id != settings.telegram_admin_chat_id:
+        return
+    await update.message.reply_text(
+        "*Available commands:*\n\n"
+        "/diary — on-demand diary entry (mood, substance, notes)\n"
+        "/task <name> — interrupt current task and start named schedule\n"
+        "/start — show this welcome message\n"
+        "/help — show this help\n\n"
+        "*Scheduled:*\n"
+        "Morning supplement check · Evening intake log",
+        parse_mode="Markdown",
+    )
+
+
 def register_command_handlers(app: Application[Any, Any, Any, Any, Any, Any]) -> None:
-    """Register /diary and /task command handlers on Application."""
+    """Register all command handlers on Application."""
     from telegram.ext import CommandHandler
 
+    app.add_handler(CommandHandler("start", _handle_start_command))
+    app.add_handler(CommandHandler("help", _handle_help_command))
     app.add_handler(CommandHandler("diary", _handle_diary_command))
     app.add_handler(CommandHandler("task", _handle_task_command))

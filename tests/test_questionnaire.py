@@ -259,3 +259,141 @@ class TestHandleQuestionnaireCallback:
         update.callback_query.from_user.id = 100
         # Should return without error (data doesn't start with "q:")
         await ui.handle_questionnaire_callback(update, MagicMock())
+
+
+# ---------------------------------------------------------------------------
+# Issue #29: QuestionType variants (NUMERIC and TIME exist in this codebase)
+# ---------------------------------------------------------------------------
+
+
+class TestQuestionTypeVariants:
+    """Issue #29 — NUMERIC and TIME types exist; test edge cases."""
+
+    def test_numeric_type_exists(self) -> None:
+        assert QuestionType.NUMERIC.value == "numeric"
+
+    def test_time_type_exists(self) -> None:
+        assert QuestionType.TIME.value == "time"
+
+    def test_all_four_types_defined(self) -> None:
+        members = {qt.value for qt in QuestionType}
+        assert members == {"text", "numeric", "selection", "time"}
+
+    # NUMERIC: non-numeric answer is stored as-is (run_questionnaire does not validate)
+    # The UI layer collects the raw string; validation is caller's responsibility.
+    async def test_numeric_question_uses_ask_text(self) -> None:
+        """NUMERIC question delegates to ask_text (same as TEXT branch)."""
+        ui = AsyncMock()
+        ui.send_status = AsyncMock()
+        ui.ask_text = AsyncMock(return_value="not_a_number")
+        ui.ask_selection = AsyncMock()
+
+        q = Questionnaire(
+            title="Numeric test",
+            questions=[
+                Question(
+                    text="Enter dose (mg)?",
+                    field_name="dose",
+                    question_type=QuestionType.NUMERIC,
+                )
+            ],
+        )
+        answers = await run_questionnaire(q, ui=ui)
+        # NUMERIC is not SELECTION so it falls through to ask_text
+        ui.ask_text.assert_awaited_once()
+        ui.ask_selection.assert_not_awaited()
+        # Raw string stored — no validation in runner
+        assert answers["dose"] == "not_a_number"
+
+    # TIME: similarly delegates to ask_text; bad format stored as-is
+    async def test_time_question_uses_ask_text(self) -> None:
+        """TIME question delegates to ask_text (same as TEXT branch)."""
+        ui = AsyncMock()
+        ui.send_status = AsyncMock()
+        ui.ask_text = AsyncMock(return_value="not-a-time")
+        ui.ask_selection = AsyncMock()
+
+        q = Questionnaire(
+            title="Time test",
+            questions=[
+                Question(
+                    text="What time did you wake up?",
+                    field_name="wake_time",
+                    question_type=QuestionType.TIME,
+                )
+            ],
+        )
+        answers = await run_questionnaire(q, ui=ui)
+        ui.ask_text.assert_awaited_once()
+        ui.ask_selection.assert_not_awaited()
+        assert answers["wake_time"] == "not-a-time"
+
+    # TEXT with default: when answer is empty string the runner stores it as-is
+    # (the UI layer handles timeout → default; runner just stores whatever UI returns)
+    async def test_text_default_value_passed_through(self) -> None:
+        """Default applied by UI on timeout; runner stores the returned value."""
+        ui = AsyncMock()
+        ui.send_status = AsyncMock()
+        # Simulate UI returning the default after timeout
+        ui.ask_text = AsyncMock(return_value="default_notes")
+
+        q = Questionnaire(
+            title="Default test",
+            questions=[
+                Question(
+                    text="Any notes?",
+                    field_name="notes",
+                    question_type=QuestionType.TEXT,
+                    required=False,
+                    default="default_notes",
+                )
+            ],
+        )
+        answers = await run_questionnaire(q, ui=ui)
+        assert answers["notes"] == "default_notes"
+
+    # SELECTION with multiple options
+    async def test_selection_with_multiple_options_stored(self) -> None:
+        ui = AsyncMock()
+        ui.send_status = AsyncMock()
+        ui.ask_selection = AsyncMock(return_value="mg")
+        ui.ask_text = AsyncMock()
+
+        q = Questionnaire(
+            title="Unit test",
+            questions=[
+                Question(
+                    text="Unit?",
+                    field_name="unit",
+                    question_type=QuestionType.SELECTION,
+                    options=["mg", "g", "ml", "units"],
+                )
+            ],
+        )
+        answers = await run_questionnaire(q, ui=ui)
+        assert answers["unit"] == "mg"
+        ui.ask_selection.assert_awaited_once()
+
+    # required=False question: still asked, answer stored (runner always asks all questions)
+    async def test_required_false_question_still_asked(self) -> None:
+        """required=False does not skip the question in run_questionnaire."""
+        ui = AsyncMock()
+        ui.send_status = AsyncMock()
+        ui.ask_text = AsyncMock(return_value="")
+
+        q = Questionnaire(
+            title="Optional test",
+            questions=[
+                Question(
+                    text="Optional field?",
+                    field_name="optional",
+                    question_type=QuestionType.TEXT,
+                    required=False,
+                    default="",
+                )
+            ],
+        )
+        answers = await run_questionnaire(q, ui=ui)
+        # required=False does not skip — it's the UI's job to handle blank input
+        assert "optional" in answers
+        ui.ask_text.assert_awaited_once()
